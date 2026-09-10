@@ -348,6 +348,7 @@ function SummaryCard({
   label, value, sub,
   valueClass = 'text-gray-900',
   pulseKey, direction,
+  onClick, clickable,
 }) {
   const [pulse, setPulse] = useState(false)
   const firstRef = useRef(true)
@@ -366,10 +367,77 @@ function SummaryCard({
     : ''
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200/80 px-4 py-3 shadow-sm hover:shadow-md transition-shadow">
-      <p className="text-[11px] text-gray-500 font-medium mb-0.5 truncate">{label}</p>
+    <div
+      className={`bg-white rounded-xl border border-gray-200/80 px-4 py-3 shadow-sm hover:shadow-md transition-shadow ${clickable ? 'cursor-pointer active:scale-[0.97] hover:border-blue-300' : ''}`}
+      onClick={onClick}
+    >
+      <p className="text-[11px] text-gray-500 font-medium mb-0.5 truncate">
+        {label}
+        {clickable && <span className="ml-1 text-blue-400">›</span>}
+      </p>
       <p className={`text-base sm:text-lg font-bold tabular-nums leading-tight ${valueClass} ${dirClass}`}>{value}</p>
       {sub && <p className="text-[10px] text-gray-400 mt-0.5 truncate">{sub}</p>}
+    </div>
+  )
+}
+
+
+/* ================================================================
+   OPEN POSITIONS MODAL
+   ================================================================ */
+
+function OpenPositionsModal({ positions, onClose }) {
+  const ref = useRef()
+
+  useEffect(() => {
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) onClose() }
+    document.addEventListener('mousedown', h)
+    document.addEventListener('touchstart', h)
+    return () => { document.removeEventListener('mousedown', h); document.removeEventListener('touchstart', h) }
+  }, [onClose])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+      <div ref={ref} className="bg-white rounded-2xl shadow-2xl border border-gray-100 w-full max-w-md mx-4 overflow-hidden animate-fade-in">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <h3 className="text-sm font-bold text-gray-900">
+            Lệnh đang mở ({positions.length})
+          </h3>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 transition-colors">
+            ✕
+          </button>
+        </div>
+        <div className="max-h-[60vh] overflow-y-auto">
+          {positions.length === 0 ? (
+            <div className="py-12 text-center text-gray-400 text-sm">Không có lệnh đang mở</div>
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {positions.map((p, i) => (
+                <div key={p.positionIdentifier || i} className="px-5 py-3 flex items-center justify-between hover:bg-gray-50/50 transition-colors">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-bold ${p.direction === 'BUY' ? 'text-emerald-600' : 'text-rose-500'}`}>
+                        {p.direction || '—'}
+                      </span>
+                      <span className="text-sm font-semibold text-gray-900">{p.symbol || '—'}</span>
+                    </div>
+                    <div className="flex gap-3 mt-0.5 text-[11px] text-gray-400 tabular-nums">
+                      <span>Vol: {fmtVN(p.volume, 2)}</span>
+                      <span>Open: {fmtPrice(p.openPrice)}</span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] text-gray-400">Ticket</p>
+                    <p className="text-xs font-mono font-bold text-gray-700 tabular-nums">
+                      {p.positionTicket || p.positionIdentifier || '—'}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -529,6 +597,8 @@ export default function ExnessPage() {
   const [error, setError] = useState(null)
   const [connected, setConnected] = useState(false)
   const [newIds, setNewIds] = useState(new Set())
+  const [activePositions, setActivePositions] = useState([])
+  const [showOpenPositions, setShowOpenPositions] = useState(false)
   const clientRef = useRef(null)
 
   const isToday = fromDate === todayStr() && toDate === todayStr()
@@ -557,9 +627,27 @@ export default function ExnessPage() {
     }
   }, [])
 
+  const fetchActivePositions = useCallback(async () => {
+    try {
+      const res = await fetch(`${BASE}/api/public/mt5/active-positions`)
+      const data = await res.json()
+      if (data.success) {
+        setActivePositions(data.positions || [])
+      }
+    } catch (e) {
+      console.error('Failed to fetch active positions', e)
+    }
+  }, [])
+
   useEffect(() => {
     fetchSignals(fromDate, toDate)
   }, [fromDate, toDate, fetchSignals])
+
+  useEffect(() => {
+    fetchActivePositions()
+    const interval = setInterval(fetchActivePositions, 5000)
+    return () => clearInterval(interval)
+  }, [fetchActivePositions])
 
   const handleDateChange = useCallback((from, to) => {
     setFromDate(from)
@@ -643,9 +731,11 @@ export default function ExnessPage() {
 
     const maxDrawdown = calcMaxDrawdown(signals)
 
+    const netDepositWithdraw = totalDeposit - totalWithdrawal
+
     return {
       totalTrades, totalLot, totalProfit,
-      totalDeposit, totalWithdrawal,
+      totalDeposit, totalWithdrawal, netDepositWithdraw,
       floatingPL, maxDrawdown, latest,
     }
   }, [signals])
@@ -657,8 +747,8 @@ export default function ExnessPage() {
   const pProfit = useValuePulse(summary.totalProfit)
   const pFloat = useValuePulse(summary.floatingPL)
   const pDD = useValuePulse(summary.maxDrawdown)
-  const pDeposit = useValuePulse(summary.totalDeposit)
-  const pWithdraw = useValuePulse(summary.totalWithdrawal)
+  const pNetDW = useValuePulse(summary.netDepositWithdraw)
+  const pOpenCount = useValuePulse(activePositions.length)
 
   const pBal = useValuePulse(summary.latest?.balance)
   const pEq = useValuePulse(summary.latest?.equity)
@@ -709,6 +799,14 @@ export default function ExnessPage() {
             pulseKey={pTrades.key} direction={pTrades.dir}
           />
           <SummaryCard
+            label="Đang mở"
+            value={activePositions.length}
+            valueClass="text-blue-600"
+            pulseKey={pOpenCount.key} direction={pOpenCount.dir}
+            onClick={() => setShowOpenPositions(true)}
+            clickable
+          />
+          <SummaryCard
             label="Tổng lot"
             value={fmtVN(summary.totalLot, 2)}
             pulseKey={pLot.key} direction={pLot.dir}
@@ -737,18 +835,21 @@ export default function ExnessPage() {
             direction={pDD.dir}
           />
           <SummaryCard
-            label="Tổng Nạp"
-            value={fmtCent(summary.totalDeposit)}
-            valueClass="text-emerald-600"
-            pulseKey={pDeposit.key} direction={pDeposit.dir}
-          />
-          <SummaryCard
-            label="Tổng Rút"
-            value={fmtCent(summary.totalWithdrawal)}
-            valueClass="text-rose-500"
-            pulseKey={pWithdraw.key} direction={pWithdraw.dir}
+            label="Nạp - Rút"
+            value={fmtCent(Math.abs(summary.netDepositWithdraw))}
+            valueClass={summary.netDepositWithdraw >= 0 ? 'text-emerald-600' : 'text-rose-500'}
+            sub={summary.netDepositWithdraw >= 0 ? '+' : '−'}
+            pulseKey={pNetDW.key} direction={pNetDW.dir}
           />
         </div>
+
+        {/* ── Open Positions Modal ──────────────────────────── */}
+        {showOpenPositions && (
+          <OpenPositionsModal
+            positions={activePositions}
+            onClose={() => setShowOpenPositions(false)}
+          />
+        )}
 
         {/* ── account info bar ─────────────────────────────────── */}
         {summary.latest && (

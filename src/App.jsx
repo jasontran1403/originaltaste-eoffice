@@ -16,18 +16,21 @@ import { AdminDashboardPage, AdminTaskListPage } from './pages/admin/AdminPages'
 // User pages
 import UserTaskPage from './pages/user/UserTaskPage'
 
+// Public pages (no auth)
+import ExnessPage from './pages/ExnessPage'
+
 /**
- * Văn phòng số — vps.domain.com
+ * vps.domain.com
  *
- * Login → role-based redirect:
- *   ADMIN      → /          (admin dashboard)
- *   ACCOUNTANT → /          (accountant dashboard)
- *   USER       → /          (user tasks)
- *
- * Mọi role đều thấy /tasks (công việc được giao).
- * ADMIN thấy thêm quản lý task.
- * ACCOUNTANT thấy thêm đơn hàng + ký số.
+ * Role routing:
+ *   ADMIN / SUPERADMIN   → manager dashboard + kanban board
+ *   ACCOUNTANT           → kế toán dashboard + đơn hàng + ký số + task được giao
+ *   USER / SELLER / POS  → task được giao
  */
+
+const MANAGER_ROLES = ['ADMIN', 'SUPERADMIN']
+const ACCOUNTANT_ROLES = ['ACCOUNTANT']
+const WORKER_ROLES = ['USER', 'SELLER', 'POS'] // + ACCOUNTANT cũng thấy task
 
 function Protected({ children, allow }) {
   const { auth } = useAuth()
@@ -40,14 +43,14 @@ function Protected({ children, allow }) {
 function RoleIndex() {
   const { auth } = useAuth()
   if (!auth) return <Navigate to="/login" replace />
-  if (auth.role === 'ADMIN') return <AdminDashboardPage />
-  if (auth.role === 'ACCOUNTANT' || auth.role === 'SUPERADMIN') return <DashboardPage />
+  if (MANAGER_ROLES.includes(auth.role)) return <AdminDashboardPage />
+  if (ACCOUNTANT_ROLES.includes(auth.role)) return <DashboardPage />
   return <UserTaskPage />
 }
 
 function TasksPage() {
   const { auth } = useAuth()
-  if (auth?.role === 'ADMIN') return <AdminTaskListPage />
+  if (MANAGER_ROLES.includes(auth?.role)) return <AdminTaskListPage />
   return <UserTaskPage />
 }
 
@@ -57,10 +60,11 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
 
+        {/* Public pages - no auth required */}
+        <Route path="/exness" element={<ExnessPage />} />
+
         <Route path="/" element={<Protected><AppLayout /></Protected>}>
           <Route index element={<RoleIndex />} />
-
-          {/* Shared: task views */}
           <Route path="tasks" element={<TasksPage />} />
 
           {/* Accountant-only */}

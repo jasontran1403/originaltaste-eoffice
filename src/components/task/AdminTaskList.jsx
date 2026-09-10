@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { listTasks, deleteTask, getCategories, getAssignableUsers } from '../../services/taskApi'
+import { listTasks, deleteTask, getCategories, getAssignableUsers, reassignTask } from '../../services/taskApi'
 import TaskCard from './TaskCard'
 import TaskForm from './TaskForm'
 import TaskDetailModal from './TaskDetailModal'
@@ -44,6 +44,7 @@ export default function AdminTaskList() {
   const [showForm, setShowForm] = useState(false)
   const [editTask, setEditTask] = useState(null)
   const [detailId, setDetailId] = useState(null)
+  const [reassignTaskData, setReassignTaskData] = useState(null)
 
   useEffect(() => {
     getCategories().then(r => { if (r.data?.code === 900) setCats(r.data.data || []) }).catch(() => {})
@@ -100,7 +101,7 @@ export default function AdminTaskList() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <div>
           <h2 className="text-lg font-bold text-gray-900">Quản lý Task</h2>
-          <p className="text-xs text-gray-500 mt-0.5">{total} task</p>
+          <p className="text-xs text-gray-500 mt-0.5">{total} task (chỉ task do admin tạo)</p>
         </div>
         <button onClick={() => { setEditTask(null); setShowForm(true) }} className="btn-primary shrink-0">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
@@ -111,7 +112,6 @@ export default function AdminTaskList() {
       {/* Filters */}
       <div className="card p-3 mb-4">
         <div className="flex flex-wrap gap-2">
-          {/* Search */}
           <div className="relative flex-1 min-w-[200px]">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" width="14" height="14" viewBox="0 0 14 14" fill="none">
               <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.5" />
@@ -145,7 +145,33 @@ export default function AdminTaskList() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {tasks.map(t => (
-            <TaskCard key={t.id} task={t} onClick={() => setDetailId(t.id)} />
+            <div key={t.id} className="relative group">
+              <TaskCard task={t} onClick={() => setDetailId(t.id)} />
+              {/* Admin actions overlay */}
+              <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 z-10">
+                <button
+                  onClick={e => { e.stopPropagation(); setReassignTaskData(t) }}
+                  className="w-6 h-6 rounded-full bg-white shadow-md flex items-center justify-center text-blue-600 hover:bg-blue-50"
+                  title="Đổi người xử lý"
+                >
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v4l2.5 1.5M11 6a5 5 0 11-10 0 5 5 0 0110 0z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
+                </button>
+                <button
+                  onClick={e => { e.stopPropagation(); setEditTask(t); setShowForm(true) }}
+                  className="w-6 h-6 rounded-full bg-white shadow-md flex items-center justify-center text-gray-600 hover:bg-gray-50"
+                  title="Sửa"
+                >
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M7.5 1.5l1 1-5.5 5.5H2V7L7.5 1.5z" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </button>
+                <button
+                  onClick={e => { e.stopPropagation(); handleDelete(t.id) }}
+                  className="w-6 h-6 rounded-full bg-white shadow-md flex items-center justify-center text-red-500 hover:bg-red-50"
+                  title="Xóa"
+                >
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 3h6M3.5 3V2.5a.5.5 0 01.5-.5h2a.5.5 0 01.5.5V3M4 4.5v2.5M6 4.5v2.5M3 3l.5 5h3l.5-5" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </button>
+              </div>
+            </div>
           ))}
         </div>
       )}
@@ -174,6 +200,80 @@ export default function AdminTaskList() {
       {/* Modals */}
       {showForm && <TaskForm task={editTask} onClose={() => setShowForm(false)} onSaved={load} />}
       {detailId && <TaskDetailModal taskId={detailId} onClose={() => setDetailId(null)} isAdmin onRefresh={load} />}
+      {reassignTaskData && (
+        <ReassignModal
+          task={reassignTaskData}
+          users={users}
+          onClose={() => setReassignTaskData(null)}
+          onSaved={() => { setReassignTaskData(null); load() }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// REASSIGN MODAL (#2)
+// ═══════════════════════════════════════════════════════════════════
+function ReassignModal({ task, users, onClose, onSaved }) {
+  const toast = useToast()
+  const [ids, setIds] = useState(task.assignees?.map(a => a.userId) || [])
+  const [saving, setSaving] = useState(false)
+
+  const userOpts = users.map(u => ({
+    value: u.id,
+    label: `${u.fullName || u.username} (${u.role})`
+  }))
+
+  const handleSave = async () => {
+    if (ids.length === 0) { toast.warning('Chọn ít nhất 1 người'); return }
+    try {
+      setSaving(true)
+      const res = await reassignTask(task.id, { assigneeIds: ids })
+      if (res.data?.code === 900) {
+        toast.success('Đã cập nhật người xử lý')
+        onSaved?.()
+      } else toast.error(res.data?.message || 'Lỗi')
+    } catch { toast.error('Lỗi kết nối') }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 animate-fade-in" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-base font-bold text-gray-900">Đổi người xử lý</h3>
+            <p className="text-xs text-gray-500 mt-0.5 truncate max-w-[300px]">{task.title}</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 text-gray-400">✕</button>
+        </div>
+
+        <div className="mb-4">
+          <label className="label-sm">Người thực hiện</label>
+          <Select value={ids} onChange={setIds} options={userOpts} multiple searchable placeholder="Chọn người..." />
+        </div>
+
+        {/* Current assignees */}
+        {task.assignees?.length > 0 && (
+          <div className="mb-4">
+            <p className="text-[10px] text-gray-500 font-semibold mb-1">Hiện tại:</p>
+            <div className="flex flex-wrap gap-1">
+              {task.assignees.map(a => (
+                <span key={a.userId} className="badge bg-blue-50 text-blue-700 text-xs">{a.fullName || a.username}</span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <button onClick={handleSave} disabled={saving} className="btn-primary flex-1 justify-center">
+            {saving ? 'Đang lưu...' : 'Cập nhật'}
+          </button>
+          <button onClick={onClose} className="btn-secondary">Hủy</button>
+        </div>
+      </div>
     </div>
   )
 }

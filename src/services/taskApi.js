@@ -1,39 +1,35 @@
 import api from './api'
 
-// Detect role prefix from stored auth
 function rolePrefix() {
   const role = localStorage.getItem('role') || sessionStorage.getItem('role') || ''
-  if (role === 'ADMIN') return '/api/admin'
-  if (role === 'ACCOUNTANT' || role === 'SUPERADMIN') return '/api/accountant'
+  if (role === 'ADMIN' || role === 'SUPERADMIN') return '/api/admin'
   return '/api/user'
+}
+
+function isManager() {
+  const role = localStorage.getItem('role') || sessionStorage.getItem('role') || ''
+  return role === 'ADMIN' || role === 'SUPERADMIN'
 }
 
 // ─── Tasks ───────────────────────────────────────────────────────
 
-export const listTasks = (params = {}) => {
-  const p = rolePrefix()
-  return api.get(`${p}/tasks`, { params })
-}
+export const listTasks = (params = {}) =>
+  api.get(`${rolePrefix()}/tasks`, { params })
 
-export const getTask = id => {
-  const p = rolePrefix()
-  return api.get(`${p}/tasks/${id}`)
-}
+export const getTask = id =>
+  api.get(`${rolePrefix()}/tasks/${id}`)
 
-export const updateProgress = (id, data) => {
-  const p = rolePrefix()
-  return api.patch(`${p}/tasks/${id}/progress`, data)
-}
+export const updateProgress = (id, data) =>
+  api.patch(`${rolePrefix()}/tasks/${id}/progress`, data)
 
-export const completeTask = (id, data) => {
-  const p = rolePrefix()
-  return api.post(`${p}/tasks/${id}/complete`, data)
-}
+export const completeSubItem = (taskId, subId, data = {}) =>
+  api.post(`/api/user/tasks/${taskId}/sub/${subId}/complete`, data)
 
-export const requestExtension = (id, data) => {
-  const p = rolePrefix()
-  return api.post(`${p}/tasks/${id}/extension`, data)
-}
+export const completeTask = (id, data) =>
+  api.post(`${rolePrefix()}/tasks/${id}/complete`, data)
+
+export const requestExtension = (id, data) =>
+  api.post(`${rolePrefix()}/tasks/${id}/extension`, data)
 
 // ─── Admin-only ──────────────────────────────────────────────────
 
@@ -47,25 +43,28 @@ export const getPendingExtensions = (page = 0, size = 20) =>
   api.get('/api/admin/tasks/extensions', { params: { page, size } })
 export const reviewExtension = (id, data) =>
   api.put(`/api/admin/tasks/extensions/${id}`, data)
+/** Admin gán thêm / đổi người xử lý */
+export const reassignTask = (id, data) =>
+  api.put(`/api/admin/tasks/${id}/reassign`, data)
+
+// ─── User personal tasks ─────────────────────────────────────────
+
+export const createPersonalTask = data => api.post('/api/user/tasks', data)
+export const updatePersonalTask = (id, data) => api.put(`/api/user/tasks/${id}`, data)
+export const deletePersonalTask = id => api.delete(`/api/user/tasks/${id}`)
 
 // ─── Messages ────────────────────────────────────────────────────
 
-export const getMessages = (page = 0, size = 20) => {
-  const p = rolePrefix()
-  return api.get(`${p}/messages`, { params: { page, size } })
-}
+export const getMessages = (page = 0, size = 20) =>
+  api.get(`${rolePrefix()}/messages`, { params: { page, size } })
 
-export const getUnreadCount = () => {
-  const p = rolePrefix()
-  return api.get(`${p}/messages/unread`)
-}
+export const getUnreadCount = () =>
+  api.get(`${rolePrefix()}/messages/unread`)
 
-export const markRead = id => {
-  const p = rolePrefix()
-  return api.patch(`${p}/messages/${id}/read`)
-}
+export const markRead = id =>
+  api.patch(`${rolePrefix()}/messages/${id}/read`)
 
-export const markAllRead = () => {
-  const p = rolePrefix()
-  return api.post(`${p}/messages/read-all`)
-}
+export const markAllRead = () =>
+  api.post(`${rolePrefix()}/messages/read-all`)
+
+export { isManager }

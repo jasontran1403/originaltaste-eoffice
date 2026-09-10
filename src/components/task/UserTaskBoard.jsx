@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
-import { listTasks } from '../../services/taskApi'
+import { listTasks, deletePersonalTask } from '../../services/taskApi'
 import TaskCard from './TaskCard'
 import TaskDetailModal from './TaskDetailModal'
+import TaskForm from './TaskForm'
 import Select from '../ui/Select'
 import ProgressBar from '../ui/ProgressBar'
 import { useToast } from '../ui/Toast'
@@ -19,6 +20,11 @@ const PRIORITY_OPTIONS = [
   { value: 'URGENT', label: 'Khẩn cấp' },
 ]
 
+const TYPE_OPTIONS = [
+  { value: 'ADMIN', label: 'Được giao' },
+  { value: 'PERSONAL', label: 'Cá nhân' },
+]
+
 export default function UserTaskBoard() {
   const toast = useToast()
 
@@ -30,8 +36,11 @@ export default function UserTaskBoard() {
   const [q, setQ] = useState('')
   const [status, setStatus] = useState(null)
   const [priority, setPriority] = useState(null)
+  const [typeFilter, setTypeFilter] = useState(null)
 
   const [detailId, setDetailId] = useState(null)
+  const [showForm, setShowForm] = useState(false)
+  const [editTask, setEditTask] = useState(null)
 
   const load = useCallback(async () => {
     try {
@@ -57,20 +66,34 @@ export default function UserTaskBoard() {
     return () => clearTimeout(t)
   }, [searchBuf])
 
+  // Filter by type client-side
+  const filtered = typeFilter ? tasks.filter(t => t.taskType === typeFilter) : tasks
+
   // Quick stats
-  const active = tasks.filter(t => t.status !== 'COMPLETED' && t.status !== 'CANCELLED')
+  const active = filtered.filter(t => t.status !== 'COMPLETED' && t.status !== 'CANCELLED')
   const overdue = active.filter(t => t.deadline && t.deadline < Date.now())
-  const done = tasks.filter(t => t.status === 'COMPLETED')
+  const done = filtered.filter(t => t.status === 'COMPLETED')
+  const personalCount = tasks.filter(t => t.taskType === 'PERSONAL').length
   const avgProgress = active.length ? Math.round(active.reduce((s, t) => s + (t.progress || 0), 0) / active.length) : 0
+
+  const handleDeletePersonal = async (id) => {
+    if (!confirm('Xóa task cá nhân này?')) return
+    try {
+      await deletePersonalTask(id)
+      toast.success('Đã xóa')
+      load()
+    } catch { toast.error('Lỗi xóa') }
+  }
 
   return (
     <div>
       {/* Stats row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
         <MiniStat icon="📋" label="Tổng" value={total} tone="blue" />
         <MiniStat icon="🔄" label="Đang làm" value={active.length} tone="indigo" />
         <MiniStat icon="✅" label="Hoàn thành" value={done.length} tone="emerald" />
         <MiniStat icon="🔴" label="Quá hạn" value={overdue.length} tone="red" />
+        <MiniStat icon="📝" label="Cá nhân" value={personalCount} tone="violet" />
       </div>
 
       {/* Avg progress */}
@@ -81,7 +104,7 @@ export default function UserTaskBoard() {
         </div>
       )}
 
-      {/* Filters */}
+      {/* Filters + Create button */}
       <div className="flex flex-wrap gap-2 mb-4">
         <div className="relative flex-1 min-w-[180px]">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -92,6 +115,11 @@ export default function UserTaskBoard() {
         </div>
         <Select value={status} onChange={v => { setStatus(v); setPage(0) }} options={STATUS_OPTIONS} placeholder="Trạng thái" clearable className="w-36" size="sm" />
         <Select value={priority} onChange={v => { setPriority(v); setPage(0) }} options={PRIORITY_OPTIONS} placeholder="Ưu tiên" clearable className="w-32" size="sm" />
+        <Select value={typeFilter} onChange={setTypeFilter} options={TYPE_OPTIONS} placeholder="Loại" clearable className="w-28" size="sm" />
+        <button onClick={() => { setEditTask(null); setShowForm(true) }} className="btn-primary shrink-0">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2v10M2 7h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+          Tạo task
+        </button>
       </div>
 
       {/* Task grid */}
@@ -99,20 +127,26 @@ export default function UserTaskBoard() {
         <div className="flex items-center justify-center h-40">
           <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
         </div>
-      ) : tasks.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <div className="card p-10 text-center">
           <div className="text-4xl mb-2">📭</div>
-          <p className="text-gray-400 text-sm">Bạn chưa được giao task nào</p>
+          <p className="text-gray-400 text-sm">
+            {typeFilter === 'PERSONAL' ? 'Bạn chưa tạo task cá nhân nào' : 'Không có task nào'}
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {tasks.map(t => (
-            <TaskCard key={t.id} task={t} onClick={() => setDetailId(t.id)} />
+          {filtered.map(t => (
+            <TaskCard key={t.id} task={t} onClick={() => setDetailId(t.id)}
+              showType onDelete={t.taskType === 'PERSONAL' ? () => handleDeletePersonal(t.id) : null}
+              onEdit={t.taskType === 'PERSONAL' ? () => { setEditTask(t); setShowForm(true) } : null}
+            />
           ))}
         </div>
       )}
 
       {detailId && <TaskDetailModal taskId={detailId} onClose={() => setDetailId(null)} onRefresh={load} />}
+      {showForm && <TaskForm task={editTask} onClose={() => setShowForm(false)} onSaved={load} isPersonal />}
     </div>
   )
 }
@@ -123,6 +157,7 @@ function MiniStat({ icon, label, value, tone }) {
     indigo: 'bg-indigo-50 text-indigo-600 border-indigo-200',
     emerald: 'bg-emerald-50 text-emerald-600 border-emerald-200',
     red: 'bg-red-50 text-red-600 border-red-200',
+    violet: 'bg-violet-50 text-violet-600 border-violet-200',
   }
   return (
     <div className={`rounded-xl border p-3 ${colors[tone] || colors.blue}`}>

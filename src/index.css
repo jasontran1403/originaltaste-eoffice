@@ -11,6 +11,25 @@
   ::-webkit-scrollbar-thumb { @apply bg-gray-300 rounded-full; }
 }
 
+@keyframes valuePulseUp {
+  0%   { transform: scale(1);   background: transparent; }
+  30%  { transform: scale(1.10); background: rgba(16,185,129,0.15); }
+  100% { transform: scale(1);   background: transparent; }
+}
+@keyframes valuePulseDown {
+  0%   { transform: scale(1);   background: transparent; }
+  30%  { transform: scale(1.10); background: rgba(244,63,94,0.15); }
+  100% { transform: scale(1);   background: transparent; }
+}
+.value-pulse-up {
+  animation: valuePulseUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  border-radius: 4px;
+}
+.value-pulse-down {
+  animation: valuePulseDown 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  border-radius: 4px;
+}
+
 @layer components {
   .btn-primary {
     @apply inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 active:bg-blue-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
@@ -25,28 +44,96 @@
     @apply bg-white rounded-xl border border-gray-200 shadow-sm;
   }
   .input {
-    @apply w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all placeholder:text-gray-400;
+    @apply w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all placeholder:text-gray-400 bg-white;
   }
   .badge {
     @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold;
   }
+  .label-sm {
+    @apply text-xs font-semibold text-gray-500 mb-1 block;
+  }
+  .spinner {
+    @apply w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin;
+  }
 }
 
-/* ── Animations ── */
+/* ── Animations ────────────────────────────────────────────────── */
+
 @keyframes fadeIn {
-  from { opacity: 0; transform: scale(0.97); }
-  to   { opacity: 1; transform: scale(1); }
+  from { opacity: 0; transform: scale(0.97) translateY(4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
 }
-
 @keyframes slideInRight {
   from { opacity: 0; transform: translateX(100%); }
   to   { opacity: 1; transform: translateX(0); }
 }
-
-.animate-fade-in {
-  animation: fadeIn 0.2s ease-out;
+@keyframes taskEnter {
+  from { opacity: 0; transform: translateY(12px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-.animate-slide-in-right {
-  animation: slideInRight 0.3s ease-out;
+.animate-fade-in     { animation: fadeIn 0.25s ease-out; }
+.animate-slide-in-right { animation: slideInRight 0.3s ease-out; }
+.task-enter           { animation: taskEnter 0.3s ease-out both; }
+
+/* Staggered entry for kanban cards */
+.task-enter:nth-child(1)  { animation-delay: 0s; }
+.task-enter:nth-child(2)  { animation-delay: 0.04s; }
+.task-enter:nth-child(3)  { animation-delay: 0.08s; }
+.task-enter:nth-child(4)  { animation-delay: 0.12s; }
+.task-enter:nth-child(5)  { animation-delay: 0.16s; }
+.task-enter:nth-child(6)  { animation-delay: 0.2s; }
+.task-enter:nth-child(7)  { animation-delay: 0.24s; }
+.task-enter:nth-child(8)  { animation-delay: 0.28s; }
+.task-enter:nth-child(9)  { animation-delay: 0.32s; }
+.task-enter:nth-child(10) { animation-delay: 0.36s; }
+
+/* ── Urgent border animation ─────────────────────────────────── */
+/* Rotating gradient border for tasks near deadline (<10% time) */
+
+.urgent-border {
+  position: relative;
+}
+.urgent-border::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 14px; /* matches rounded-xl + 2px */
+  padding: 2px;
+  background: conic-gradient(
+    from var(--urgent-angle, 0deg),
+    #ef4444, #f97316, #ef4444, transparent, transparent, #ef4444
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: urgentSpin 2s linear infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+@keyframes urgentSpin {
+  to { --urgent-angle: 360deg; }
+}
+
+/* Fallback for browsers without @property */
+@supports not (background: conic-gradient(from 0deg, red, blue)) {
+  .urgent-border::before {
+    background: linear-gradient(90deg, #ef4444, #f97316, #ef4444);
+    animation: urgentPulse 1s ease-in-out infinite alternate;
+  }
+}
+
+/* CSS custom property animation (Chromium) */
+@property --urgent-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+/* Fallback pulse for non-Chromium */
+@keyframes urgentPulse {
+  from { opacity: 0.5; }
+  to   { opacity: 1; }
 }

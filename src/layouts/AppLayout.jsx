@@ -3,9 +3,9 @@ import Navbar from '../components/Navbar'
 
 export default function AppLayout() {
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="h-[100dvh] flex flex-col overflow-hidden bg-gray-50">
       <Navbar />
-      <main className="w-full px-4 sm:px-6 lg:px-8 py-5 sm:py-6">
+      <main className="flex-1 min-h-0 overflow-hidden px-4 sm:px-6 lg:px-8 py-3 sm:py-4">
         <Outlet />
       </main>
     </div>

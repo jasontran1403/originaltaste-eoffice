@@ -39,13 +39,9 @@ const fmtCent = (v, d = 2) => {
 const fmtTime = (iso) => {
   if (!iso) return '—'
   try {
-    let s = String(iso)
-    if (!/[zZ]|[+\-]\d{2}:?\d{2}$/.test(s)) s += 'Z'
-    return new Date(s).toLocaleTimeString('vi-VN', {
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
-      timeZone: 'Asia/Ho_Chi_Minh',
-    })
-  } catch { return iso }
+    const m = String(iso).match(/(\d{2}):(\d{2}):(\d{2})/)
+    return m ? `${m[1]}:${m[2]}:${m[3]}` : String(iso)
+  } catch { return String(iso) }
 }
 
 const fmtDateShort = (str) => {
@@ -410,7 +406,7 @@ function SignalCard({ signal: s, isNew }) {
             </span>
           )}
         </div>
-        <span className="text-[11px] text-gray-400 tabular-nums">{fmtTime(s.eventTime)}</span>
+        <span className="text-[11px] text-gray-400 tabular-nums">{fmtTime(s.createdAt)}</span>
       </div>
 
       {isBalance ? (
@@ -478,7 +474,7 @@ function SignalRow({ signal: s, isNew }) {
   return (
     <tr className={`border-b border-gray-100 transition-colors duration-150 hover:bg-blue-50/40 active:bg-blue-100/40 cursor-default ${isNew ? 'signal-enter' : ''}`}>
       <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap tabular-nums text-xs">
-        {fmtTime(s.eventTime)}
+        {fmtTime(s.createdAt)}
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap">
         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold ${ev.badge}`}>

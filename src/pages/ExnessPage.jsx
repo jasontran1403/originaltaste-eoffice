@@ -806,7 +806,7 @@ export default function ExnessPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-gray-50/80 border-b border-gray-200">
-                      {['Thời gian', 'Sự kiện', 'Side', 'Lot', 'Giá mở', 'Giá đóng', 'Profit', 'Balance'].map((h, i) => (
+                      {['Thời gian', 'Order Type', 'Side', 'Lot', 'Giá mở', 'Giá đóng', 'Profit', 'Balance'].map((h, i) => (
                         <th key={h} className={`px-3 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap ${i >= 3 ? 'text-right' : 'text-left'}`}>
                           {h}
                         </th>

@@ -753,7 +753,7 @@ export default function ExnessPage() {
         {/* ── account info bar ─────────────────────────────────── */}
         {summary.latest && (
           <div className="bg-white rounded-xl border border-gray-200/80 shadow-sm mb-4 overflow-hidden">
-            <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-100">
+            <div className="grid grid-cols-1 sm:grid-cols-3 divide-x divide-gray-100">
 
               {/* Balance */}
               <div className="px-4 py-3">
@@ -797,25 +797,6 @@ export default function ExnessPage() {
                   <span className="text-sm sm:text-base font-bold text-gray-300">—</span>
                 )}
               </div>
-
-              {/* Floating P/L */}
-              <div className="px-4 py-3">
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
-                  Floating P/L
-                </p>
-                <AnimatedValue
-                  value={summary.floatingPL != null ? fmtCent(summary.floatingPL) : '—'}
-                  className={`text-sm sm:text-base font-bold ${summary.floatingPL != null
-                      ? summary.floatingPL >= 0
-                        ? 'text-emerald-600'
-                        : 'text-rose-500'
-                      : 'text-gray-300'
-                    }`}
-                  pulseKey={pReal.key}
-                  direction={pReal.dir}
-                />
-              </div>
-
             </div>
           </div>
         )}

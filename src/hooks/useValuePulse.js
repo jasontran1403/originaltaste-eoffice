@@ -1,3 +1,5 @@
+import { useState } from "react"
+
 /**
  * Trả về { pulseKey, direction } — pulseKey đổi mỗi khi value đổi,
  * direction = 'up' | 'down' | null

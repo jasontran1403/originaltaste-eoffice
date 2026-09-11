@@ -18,6 +18,7 @@ import UserTaskPage from './pages/user/UserTaskPage'
 
 // Public pages (no auth)
 import ExnessPage from './pages/ExnessPage'
+import MonitorPage from './pages/MonitorPage'
 
 /**
  * vps.domain.com
@@ -62,6 +63,7 @@ export default function App() {
 
         {/* Public pages - no auth required */}
         <Route path="/exness" element={<ExnessPage />} />
+        <Route path="/monitor" element={<MonitorPage />} />
 
         <Route path="/" element={<Protected><AppLayout /></Protected>}>
           <Route index element={<RoleIndex />} />

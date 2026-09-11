@@ -5,7 +5,7 @@ import SockJS from 'sockjs-client'
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:9009'
 
 /* ================================================================
-   HELPERS  (aligned with ExnessPage)
+   FORMAT HELPERS
    ================================================================ */
 
 const fmtVN = (v, d = 2) => {
@@ -15,26 +15,15 @@ const fmtVN = (v, d = 2) => {
     maximumFractionDigits: d,
   }).format(Number(v))
 }
-
-const fmtCent = (v, d = 2) => {
-  if (v == null || isNaN(Number(v))) return '—'
-  return `${fmtVN(v, d)}¢`
-}
-
-const fmtLot = (v) => (v == null || isNaN(Number(v)) ? '—' : fmtVN(v, 2))
-
+const fmtCent = (v, d = 2) => (v == null || isNaN(Number(v))) ? '—' : `${fmtVN(v, d)}¢`
+const fmtLot = (v) => (v == null || isNaN(Number(v))) ? '—' : fmtVN(v, 2)
 const fmtPrice = (v) => {
   if (v == null || isNaN(Number(v))) return '—'
   const s = String(v)
   const dec = s.includes('.') ? s.split('.')[1].length : 2
   return fmtVN(v, Math.min(dec, 5))
 }
-
-const fmtTime = (iso) => {
-  if (!iso) return '—'
-  const m = String(iso).match(/(\d{2}):(\d{2}):(\d{2})/)
-  return m ? `${m[1]}:${m[2]}:${m[3]}` : String(iso)
-}
+const fmtDateTime = (iso) => iso ? String(iso).replace('T', ' ').replace(/\.\d+$/, '') : '—'
 
 const fmtAge = (ms) => {
   if (ms == null || isNaN(ms)) return '—'
@@ -44,10 +33,10 @@ const fmtAge = (ms) => {
   return `${Math.floor(ms / 3600000)}h trước`
 }
 
-const positionKey = (p) => String(p.key ?? p.ticket ?? p.masterId ?? p.positionTicket ?? '')
+const positionKey = (p) => String(p.key ?? p.ticket ?? p.masterId ?? '')
 
 /* ================================================================
-   VALUE PULSE HOOK
+   PULSE — only for Floating P/L
    ================================================================ */
 
 function useValuePulse(value) {
@@ -58,10 +47,9 @@ function useValuePulse(value) {
     const prev = prevRef.current
     if (prev === value) return
     if (typeof value === 'number' && typeof prev === 'number' && Math.abs(value - prev) < 1e-9) return
-    const dir =
-      typeof value === 'number' && typeof prev === 'number'
-        ? value > prev ? 'up' : 'down'
-        : null
+    const dir = typeof value === 'number' && typeof prev === 'number'
+      ? value > prev ? 'up' : 'down'
+      : null
     prevRef.current = value
     setState((s) => ({ key: s.key + 1, dir }))
   }, [value])
@@ -69,7 +57,7 @@ function useValuePulse(value) {
   return state
 }
 
-function PulseValue({ value, pulseKey, direction, className = '', tag: Tag = 'span' }) {
+function PulseNumber({ value, pulseKey, direction, className = '' }) {
   const [pulse, setPulse] = useState(false)
   const first = useRef(true)
 
@@ -80,25 +68,18 @@ function PulseValue({ value, pulseKey, direction, className = '', tag: Tag = 'sp
     return () => clearTimeout(t)
   }, [pulseKey])
 
-  const dirClass = pulse
+  const cls = pulse
     ? direction === 'up' ? 'value-pulse-up'
-      : direction === 'down' ? 'value-pulse-down'
-        : 'value-pulse'
+      : direction === 'down' ? 'value-pulse-down' : 'value-pulse'
     : ''
 
-  return <Tag className={`tabular-nums ${className} ${dirClass}`}>{value}</Tag>
+  return <span className={`tabular-nums ${className} ${cls}`}>{value}</span>
 }
 
 /* ================================================================
-   POSITIONS: track add / remove so we can fade them
+   FADE IN / OUT ROWS
    ================================================================ */
 
-/**
- * Merge incoming positions with the previous set, keeping outgoing ones
- * around for 320ms with `_exiting: true` so a CSS animation can play.
- * Returns { list, entered } — `entered` is a Set of keys that just appeared,
- * used to trigger the enter animation.
- */
 function usePositionsWithExit(incoming) {
   const [list, setList] = useState([])
   const [entered, setEntered] = useState(new Set())
@@ -117,42 +98,27 @@ function usePositionsWithExit(incoming) {
     const enteredNow = new Set()
     for (const k of nextKeys) if (!previousKeys.has(k)) enteredNow.add(k)
 
-    // Cancel any pending exit for keys that came back
     for (const k of nextKeys) {
       const t = exitTimers.current.get(k)
       if (t) { clearTimeout(t); exitTimers.current.delete(k) }
     }
 
-    // Merge: new/updated items from server; keep exiting items in place
     setList((previousList) => {
       const merged = []
       const seen = new Set()
-
-      // Preserve previous order for stable animation
       for (const p of previousList) {
         const k = positionKey(p)
-        if (nextByKey.has(k)) {
-          merged.push({ ...nextByKey.get(k), _exiting: false })
-          seen.add(k)
-        } else if (!p._exiting) {
-          merged.push({ ...p, _exiting: true })
-          seen.add(k)
-        } else {
-          merged.push(p)
-          seen.add(k)
-        }
+        if (nextByKey.has(k)) { merged.push({ ...nextByKey.get(k), _exiting: false }); seen.add(k) }
+        else if (!p._exiting) { merged.push({ ...p, _exiting: true }); seen.add(k) }
+        else                  { merged.push(p); seen.add(k) }
       }
-
-      // Append newcomers (respecting server order)
       for (const p of nextArr) {
         const k = positionKey(p)
         if (!seen.has(k)) merged.push({ ...p, _exiting: false })
       }
-
       return merged
     })
 
-    // Track enter animation lifecycle
     if (enteredNow.size > 0) {
       setEntered((prev) => {
         const next = new Set(prev)
@@ -163,9 +129,7 @@ function usePositionsWithExit(incoming) {
         const timer = setTimeout(() => {
           setEntered((prev) => {
             if (!prev.has(k)) return prev
-            const next = new Set(prev)
-            next.delete(k)
-            return next
+            const next = new Set(prev); next.delete(k); return next
           })
           enterTimers.current.delete(k)
         }, 500)
@@ -173,7 +137,6 @@ function usePositionsWithExit(incoming) {
       }
     }
 
-    // Schedule removal for exiting keys
     for (const k of previousKeys) {
       if (nextKeys.has(k)) continue
       if (exitTimers.current.has(k)) continue
@@ -198,69 +161,248 @@ function usePositionsWithExit(incoming) {
 }
 
 /* ================================================================
-   METRIC — small number tile
+   MODAL
    ================================================================ */
 
-function Metric({ label, value, sub, valueClass = 'text-gray-900', pulseKey, direction }) {
+function Modal({ title, subtitle, onClose, children }) {
+  useEffect(() => {
+    const h = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', h)
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', h)
+      document.body.style.overflow = ''
+    }
+  }, [onClose])
+
   return (
-    <div className="px-4 py-3 first:pl-0 last:pr-0">
-      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.08em] mb-1">
-        {label}
-      </p>
-      <PulseValue
-        value={value}
-        pulseKey={pulseKey}
-        direction={direction}
-        className={`text-base sm:text-[17px] font-bold leading-tight ${valueClass}`}
-      />
-      {sub && <p className="text-[11px] text-gray-400 mt-0.5">{sub}</p>}
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4 animate-fade-in"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl border border-gray-100 w-full max-w-md overflow-hidden animate-scale-in"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between px-5 py-4 border-b border-gray-100">
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-gray-900 truncate">{title}</h3>
+            {subtitle && <p className="text-[11px] text-gray-500 mt-0.5 truncate">{subtitle}</p>}
+          </div>
+          <button
+            onClick={onClose}
+            className="shrink-0 w-7 h-7 -mt-1 -mr-1 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400"
+          >✕</button>
+        </div>
+        <div className="max-h-[70vh] overflow-y-auto">{children}</div>
+      </div>
+    </div>
+  )
+}
+
+function DetailRow({ label, value, valueClass = 'text-gray-900', mono }) {
+  return (
+    <div className="flex items-center justify-between gap-3 px-5 py-2.5 border-b border-gray-50 last:border-b-0">
+      <span className="text-[12px] text-gray-500 shrink-0">{label}</span>
+      <span className={`text-[13px] font-semibold tabular-nums text-right truncate ${mono ? 'font-mono' : ''} ${valueClass}`}>
+        {value}
+      </span>
+    </div>
+  )
+}
+
+function SectionLabel({ children }) {
+  return (
+    <div className="px-5 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wider bg-gray-50/40 border-b border-gray-100">
+      {children}
     </div>
   )
 }
 
 /* ================================================================
-   POSITION ROW
+   POSITION DETAIL MODAL
    ================================================================ */
 
-function PositionRow({ position, isEntering }) {
+function PositionDetailModal({ position, accountLabel, isMaster, onClose }) {
+  if (!position) return null
   const isBuy = String(position.direction).toUpperCase() === 'BUY'
   const profit = Number(position.profit)
-  const profitClass = isNaN(profit)
-    ? 'text-gray-300'
-    : profit >= 0 ? 'text-emerald-600' : 'text-rose-500'
-
-  const rowClass = position._exiting
-    ? 'position-exit'
-    : isEntering ? 'position-enter' : ''
+  const profitClass = isNaN(profit) ? 'text-gray-400' : profit >= 0 ? 'text-emerald-600' : 'text-rose-500'
 
   return (
-    <tr className={`border-b border-gray-100/70 ${rowClass}`}>
+    <Modal
+      title={`${position.symbol || 'Lệnh'} · ${position.direction || ''}`}
+      subtitle={accountLabel}
+      onClose={onClose}
+    >
+      <div className="px-5 py-4 bg-gradient-to-b from-gray-50/60 to-white border-b border-gray-100">
+        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
+          Lãi/Lỗ hiện tại
+        </p>
+        <p className={`text-2xl font-bold tabular-nums ${profitClass}`}>
+          {isNaN(profit) ? '—' : fmtCent(profit)}
+        </p>
+      </div>
+
+      <DetailRow label="Ticket" mono value={position.ticket || '—'} />
+      {!isMaster && position.masterId != null && (
+        <DetailRow label="Copy từ master" mono value={position.masterId || '—'} valueClass="text-indigo-600" />
+      )}
+      {isMaster && (
+        <DetailRow label="Position ID" mono value={position.masterId || position.ticket || '—'} />
+      )}
+      <DetailRow label="Symbol" value={position.symbol || '—'} />
+      <DetailRow
+        label="Chiều"
+        value={position.direction || '—'}
+        valueClass={isBuy ? 'text-emerald-600' : 'text-rose-500'}
+      />
+      <DetailRow label="Lot" value={fmtLot(position.volume)} />
+      <DetailRow label="Giá mở" value={fmtPrice(position.openPrice)} />
+      <DetailRow label="Giá hiện tại" value={position.currentPrice ? fmtPrice(position.currentPrice) : '—'} />
+      <DetailRow label="Thời gian mở" value={fmtDateTime(position.openTime)} />
+    </Modal>
+  )
+}
+
+/* ================================================================
+   ACCOUNT DETAIL MODAL
+   ================================================================ */
+
+function AccountDetailModal({ account, onClose }) {
+  if (!account) return null
+  const isMaster = account.role === 'MASTER'
+  const floatingClass = account.floating == null
+    ? 'text-gray-400'
+    : account.floating >= 0 ? 'text-emerald-600' : 'text-rose-500'
+
+  return (
+    <Modal
+      title={account.name || account.id}
+      subtitle={`${isMaster ? 'Master' : 'Copier'}${account.login ? ` · #${account.login}` : ''}`}
+      onClose={onClose}
+    >
+      <div className="px-5 py-4 bg-gradient-to-b from-gray-50/60 to-white border-b border-gray-100">
+        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
+          Floating P/L
+        </p>
+        <p className={`text-2xl font-bold tabular-nums ${floatingClass}`}>
+          {account.floating != null ? fmtCent(account.floating) : '—'}
+        </p>
+        <p className="text-[11px] text-gray-500 mt-1">
+          {account.openCount || 0} lệnh đang mở · {fmtLot(account.openLots)} lot
+        </p>
+      </div>
+
+      <SectionLabel>Tài chính</SectionLabel>
+      <DetailRow label="Balance" value={fmtCent(account.balance)} />
+      <DetailRow label="Equity" value={fmtCent(account.equity)} />
+      {account.credit > 0 && <DetailRow label="Credit" value={fmtCent(account.credit)} />}
+      <DetailRow label="Margin" value={fmtCent(account.margin)} />
+      <DetailRow label="Free margin" value={fmtCent(account.freeMargin)} />
+
+      <SectionLabel>Hôm nay</SectionLabel>
+      <DetailRow label="Số lệnh" value={account.todayTrades ?? 0} />
+      <DetailRow label="Tổng lot" value={fmtLot(account.todayLots)} />
+
+      <SectionLabel>Kết nối</SectionLabel>
+      {account.hasReport && (
+        <DetailRow
+          label="Report gần nhất"
+          value={fmtAge(account.reportAgeMs)}
+          valueClass={account.reportAgeMs > 15000 ? 'text-amber-600' : 'text-gray-900'}
+        />
+      )}
+      {!isMaster && (
+        <>
+          <DetailRow
+            label="Poll gần nhất"
+            value={account.lastPollAgeMs != null ? fmtAge(account.lastPollAgeMs) : '—'}
+            valueClass={account.lastPollAgeMs > 10000 ? 'text-amber-600' : 'text-gray-900'}
+          />
+          {account.pendingSignals != null && (
+            <DetailRow label="Signal đang chờ" value={account.pendingSignals} />
+          )}
+          {account.successCount != null && (
+            <DetailRow label="Signal đã xử lý" value={account.successCount} />
+          )}
+          {account.failedCount != null && account.failedCount > 0 && (
+            <DetailRow label="Signal lỗi" value={account.failedCount} valueClass="text-rose-500" />
+          )}
+          <DetailRow
+            label="Kết nối server"
+            value={account.serverConnected ? 'Có' : 'Không'}
+            valueClass={account.serverConnected ? 'text-emerald-600' : 'text-rose-500'}
+          />
+        </>
+      )}
+      <DetailRow
+        label="MT5 kết nối"
+        value={account.terminalConnected ? 'Có' : 'Không'}
+        valueClass={account.terminalConnected ? 'text-emerald-600' : 'text-rose-500'}
+      />
+      {!isMaster && (
+        <DetailRow
+          label="AutoTrading"
+          value={account.tradeAllowed === false ? 'Tắt' : 'Bật'}
+          valueClass={account.tradeAllowed === false ? 'text-rose-500' : 'text-emerald-600'}
+        />
+      )}
+
+      <SectionLabel>Tài khoản</SectionLabel>
+      <DetailRow label="Server" value={account.server || '—'} />
+      <DetailRow label="Currency" value={account.currency || '—'} />
+      <DetailRow label="Leverage" value={account.leverage ? `1:${account.leverage}` : '—'} />
+      {account.chartSymbol && <DetailRow label="Symbol" value={account.chartSymbol} />}
+      <DetailRow label="EA version" value={account.eaVersion || '—'} />
+
+      {account.lastError && (
+        <div className="px-5 py-3 bg-rose-50/60 border-t border-rose-100 text-[12px] text-rose-600">
+          <p className="font-semibold mb-0.5">Lỗi gần nhất</p>
+          <p className="break-words">{account.lastError}</p>
+        </div>
+      )}
+    </Modal>
+  )
+}
+
+/* ================================================================
+   ROW
+   ================================================================ */
+
+function PositionRow({ position, isEntering, isMaster, onHover, onClick }) {
+  const isBuy = String(position.direction).toUpperCase() === 'BUY'
+  const profit = Number(position.profit)
+  const profitClass = isNaN(profit) ? 'text-gray-300'
+    : profit >= 0 ? 'text-emerald-600' : 'text-rose-500'
+
+  const linkId = position.masterId ? String(position.masterId) : ''
+  const rowClass = position._exiting ? 'position-exit' : isEntering ? 'position-enter' : ''
+
+  return (
+    <tr
+      data-master-link={linkId}
+      onMouseEnter={() => linkId && onHover(linkId)}
+      onMouseLeave={() => onHover(null)}
+      onClick={() => onClick(position)}
+      className={`border-b border-gray-100/70 cursor-pointer transition-colors hover:bg-gray-50/60 ${rowClass}`}
+    >
       <td className="px-3 py-2 whitespace-nowrap font-mono text-[12px] text-gray-700 tabular-nums">
         {position.ticket || '—'}
       </td>
-      <td className="px-3 py-2 whitespace-nowrap text-[13px] font-semibold text-gray-900">
-        {position.symbol || '—'}
-      </td>
-      <td className="px-3 py-2 whitespace-nowrap">
+      <td className="px-3 py-2 whitespace-nowrap text-center">
         <span className={`text-[11px] font-bold ${isBuy ? 'text-emerald-600' : 'text-rose-500'}`}>
           {position.direction || '—'}
         </span>
       </td>
-      <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums text-[13px] text-gray-700">
-        {fmtLot(position.volume)}
-      </td>
-      <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums text-[12px] text-gray-500">
-        {fmtPrice(position.openPrice)}
-      </td>
-      <td className="px-3 py-2 text-right whitespace-nowrap tabular-nums text-[12px] text-gray-500">
-        {fmtPrice(position.currentPrice)}
-      </td>
       <td className={`px-3 py-2 text-right whitespace-nowrap tabular-nums text-[13px] font-semibold ${profitClass}`}>
         {isNaN(profit) ? '—' : fmtCent(profit)}
       </td>
-      <td className="px-3 py-2 whitespace-nowrap text-[11px] text-gray-400 tabular-nums">
-        {fmtTime(position.openTime)}
-      </td>
+      {!isMaster && (
+        <td className="px-3 py-2 whitespace-nowrap text-right font-mono text-[11px] tabular-nums text-indigo-600">
+          {position.masterId || <span className="text-gray-300">—</span>}
+        </td>
+      )}
     </tr>
   )
 }
@@ -269,149 +411,99 @@ function PositionRow({ position, isEntering }) {
    ACCOUNT CARD
    ================================================================ */
 
-function AccountCard({ account, isMaster }) {
+function AccountCard({ account, isMaster, onHoverLink, onShowPosition, onShowAccount }) {
   const { list, entered } = usePositionsWithExit(account.positions || [])
-
-  const pBal = useValuePulse(account.balance)
-  const pEq = useValuePulse(account.equity)
   const pFloat = useValuePulse(account.floating)
-  const pLots = useValuePulse(account.openLots)
-  const pOpen = useValuePulse(account.openCount)
 
   const stale = account.reportAgeMs != null && account.reportAgeMs > 15000
   const noReport = !account.hasReport
   const badFeed = noReport || stale
 
-  const roleClass = isMaster
-    ? 'bg-indigo-600 text-white'
-    : 'bg-gray-900 text-gray-100'
-
-  const idLine = isMaster
-    ? account.name || 'Master account'
-    : account.name || account.id
-
+  const roleClass = isMaster ? 'bg-indigo-600 text-white' : 'bg-gray-900 text-gray-100'
   const floatingClass = account.floating == null
     ? 'text-gray-400'
     : account.floating >= 0 ? 'text-emerald-600' : 'text-rose-500'
 
-  return (
-    <section className="bg-white border border-gray-200/80 rounded-2xl shadow-sm overflow-hidden">
-      {/* ─────── header ─────── */}
-      <header className="px-5 py-3.5 flex items-center justify-between gap-3 border-b border-gray-100 bg-gradient-to-b from-white to-gray-50/60">
-        <div className="flex items-center gap-3 min-w-0">
-          <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold tracking-wider ${roleClass}`}>
-            {isMaster ? 'MASTER' : 'COPIER'}
-          </span>
-          <div className="min-w-0">
-            <h2 className="text-sm sm:text-base font-bold text-gray-900 truncate">{idLine}</h2>
-            <p className="text-[11px] text-gray-500 truncate tabular-nums">
-              {account.login ? `#${account.login}` : account.id}
-              {account.server && <span> · {account.server}</span>}
-              {account.currency && <span> · {account.currency}</span>}
-              {account.eaVersion && <span> · EA {account.eaVersion}</span>}
-            </p>
-          </div>
-        </div>
+  const idLine = account.name || account.id
+  const openCount = list.filter((p) => !p._exiting).length
 
-        <div className="flex items-center gap-2 text-right shrink-0">
-          <div className="flex flex-col items-end">
-            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-              badFeed ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'
+  const handleRowClick = useCallback((p) => {
+    onShowPosition({
+      position: p,
+      accountLabel: `${isMaster ? 'Master' : 'Copier'} · ${idLine}`,
+      isMaster,
+    })
+  }, [onShowPosition, isMaster, idLine])
+
+  return (
+    <section className={`bg-white border rounded-2xl shadow-sm overflow-hidden flex flex-col ${
+      isMaster ? 'border-indigo-200' : 'border-gray-200/80'
+    }`}>
+      {/* header */}
+      <header className="px-4 py-3 flex items-start justify-between gap-2 border-b border-gray-100">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wider ${roleClass}`}>
+              {isMaster ? 'MASTER' : 'COPIER'}
+            </span>
+            <span className={`inline-flex items-center gap-1 text-[10px] font-semibold ${
+              badFeed ? 'text-amber-600' : 'text-emerald-600'
             }`}>
               <span className={`w-1.5 h-1.5 rounded-full ${
                 badFeed ? 'bg-amber-500' : 'bg-emerald-500 animate-pulse'
               }`} />
-              {noReport ? 'Chưa có report' : stale ? 'Report cũ' : 'Live'}
+              {noReport ? 'Chưa có report' : stale ? 'Cũ' : fmtAge(account.reportAgeMs)}
             </span>
-            {account.reportAgeMs != null && (
-              <span className="text-[10px] text-gray-400 mt-0.5 tabular-nums">
-                {fmtAge(account.reportAgeMs)}
-              </span>
-            )}
           </div>
+          <h2 className="text-[13px] font-bold text-gray-900 truncate leading-tight">{idLine}</h2>
+          <p className="text-[10px] text-gray-500 truncate tabular-nums">
+            {account.login ? `#${account.login}` : account.id}
+            {account.chartSymbol && <span> · {account.chartSymbol}</span>}
+          </p>
         </div>
+        <button
+          onClick={() => onShowAccount(account)}
+          className="shrink-0 px-2 py-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-md transition-colors"
+        >
+          Chi tiết
+        </button>
       </header>
 
-      {/* ─────── metrics strip ─────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-x divide-y sm:divide-y-0 divide-gray-100 px-1">
-        <Metric
-          label="Balance"
-          value={fmtCent(account.balance)}
-          pulseKey={pBal.key} direction={pBal.dir}
-        />
-        <Metric
-          label="Equity"
-          value={fmtCent(account.equity)}
-          pulseKey={pEq.key} direction={pEq.dir}
-        />
-        <Metric
-          label="Floating P/L"
-          value={account.floating != null ? fmtCent(account.floating) : '—'}
-          valueClass={floatingClass}
-          pulseKey={pFloat.key} direction={pFloat.dir}
-        />
-        <Metric
-          label="Lot đang mở"
-          value={fmtLot(account.openLots)}
-          sub={`${account.openCount ?? 0} lệnh`}
-          pulseKey={pLots.key} direction={pLots.dir}
-        />
-        <Metric
-          label="Hôm nay"
-          value={`${account.todayTrades ?? 0} lệnh`}
-          sub={`${fmtLot(account.todayLots)} lot`}
-          pulseKey={pOpen.key} direction={pOpen.dir}
-        />
-        <Metric
-          label={isMaster ? 'Credit' : 'Poll gần nhất'}
-          value={
-            isMaster
-              ? (account.credit > 0 ? fmtCent(account.credit) : '—')
-              : (account.lastPollAgeMs != null ? fmtAge(account.lastPollAgeMs) : '—')
-          }
-          valueClass={
-            isMaster
-              ? 'text-gray-900'
-              : account.lastPollAgeMs != null && account.lastPollAgeMs > 10000
-                ? 'text-amber-600'
-                : 'text-gray-900'
-          }
-          sub={
-            !isMaster && account.pendingSignals != null
-              ? `${account.pendingSignals} signal đang chờ`
-              : undefined
-          }
-        />
+      {/* floating P/L */}
+      <div className="px-4 py-3 border-b border-gray-100 bg-gradient-to-b from-white to-gray-50/40">
+        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
+          Floating P/L
+        </p>
+        <div className="flex items-baseline justify-between gap-2">
+          <PulseNumber
+            value={account.floating != null ? fmtCent(account.floating) : '—'}
+            pulseKey={pFloat.key}
+            direction={pFloat.dir}
+            className={`text-xl font-bold ${floatingClass}`}
+          />
+          <p className="text-[11px] text-gray-500 tabular-nums shrink-0">
+            {openCount} lệnh · {fmtLot(account.openLots)} lot
+          </p>
+        </div>
       </div>
 
-      {/* ─────── positions ─────── */}
-      <div className="border-t border-gray-100">
-        <div className="px-5 py-2.5 flex items-center justify-between">
-          <h3 className="text-[11px] font-semibold text-gray-500 uppercase tracking-[0.08em]">
-            Lệnh đang mở
-          </h3>
-          <span className="text-[11px] text-gray-400 tabular-nums">
-            {list.filter((p) => !p._exiting).length} / {list.length}
-          </span>
-        </div>
-
+      {/* positions */}
+      <div className="flex-1 min-h-0">
         {list.length === 0 ? (
-          <div className="px-5 py-8 text-center text-[13px] text-gray-400">
-            Không có lệnh nào đang mở
+          <div className="px-4 py-8 text-center text-[12px] text-gray-400">
+            Không có lệnh đang mở
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50/60 border-t border-b border-gray-100">
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Ticket</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Symbol</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Side</th>
-                  <th className="px-3 py-2 text-right text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Lot</th>
-                  <th className="px-3 py-2 text-right text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Mở</th>
-                  <th className="px-3 py-2 text-right text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Hiện tại</th>
-                  <th className="px-3 py-2 text-right text-[10px] font-semibold text-gray-400 uppercase tracking-wider">P/L</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Thời gian mở</th>
+                <tr className="bg-gray-50/60 border-b border-gray-100">
+                  <th className="px-3 py-1.5 text-left text-[9px] font-semibold text-gray-400 uppercase tracking-wider">Ticket</th>
+                  <th className="px-3 py-1.5 text-center text-[9px] font-semibold text-gray-400 uppercase tracking-wider">Side</th>
+                  <th className="px-3 py-1.5 text-right text-[9px] font-semibold text-gray-400 uppercase tracking-wider">P/L</th>
+                  {!isMaster && (
+                    <th className="px-3 py-1.5 text-right text-[9px] font-semibold text-gray-400 uppercase tracking-wider">← Master</th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -420,19 +512,22 @@ function AccountCard({ account, isMaster }) {
                     key={positionKey(p)}
                     position={p}
                     isEntering={entered.has(positionKey(p))}
+                    isMaster={isMaster}
+                    onHover={onHoverLink}
+                    onClick={handleRowClick}
                   />
                 ))}
               </tbody>
             </table>
           </div>
         )}
-
-        {account.lastError && (
-          <div className="px-5 py-2 border-t border-gray-100 bg-rose-50/40 text-[12px] text-rose-600">
-            {account.lastError}
-          </div>
-        )}
       </div>
+
+      {account.lastError && (
+        <div className="px-4 py-2 border-t border-gray-100 bg-rose-50/40 text-[11px] text-rose-600 truncate" title={account.lastError}>
+          {account.lastError}
+        </div>
+      )}
     </section>
   )
 }
@@ -446,7 +541,10 @@ export default function MonitorPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [connected, setConnected] = useState(false)
-  const [, setTick] = useState(0)   // 1s ticker for "vừa xong / 5s trước"
+  const [, setTick] = useState(0)
+  const [highlightId, setHighlightId] = useState(null)
+  const [positionModal, setPositionModal] = useState(null)
+  const [accountModal, setAccountModal] = useState(null)
   const clientRef = useRef(null)
 
   const fetchSnapshot = useCallback(async () => {
@@ -455,23 +553,17 @@ export default function MonitorPage() {
       const data = await res.json()
       if (data.success) setAccounts(data.accounts || [])
       else setError(data.message || 'Không tải được dữ liệu monitor')
-    } catch (e) {
-      setError(e.message)
-    } finally {
-      setLoading(false)
-    }
+    } catch (e) { setError(e.message) }
+    finally { setLoading(false) }
   }, [])
 
   useEffect(() => { fetchSnapshot() }, [fetchSnapshot])
 
-  // Poll every 5s as a safety net if WebSocket drops. WebSocket updates are
-  // per-account, so the polling covers accounts that never sent an incremental.
   useEffect(() => {
     const t = setInterval(() => { if (!connected) fetchSnapshot() }, 5000)
     return () => clearInterval(t)
   }, [connected, fetchSnapshot])
 
-  // Re-render every second so "report age" and "poll age" advance smoothly
   useEffect(() => {
     const t = setInterval(() => setTick((n) => n + 1), 1000)
     return () => clearInterval(t)
@@ -498,9 +590,7 @@ export default function MonitorPage() {
               next[idx] = { ...next[idx], ...account }
               return next
             })
-          } catch (e) {
-            console.error('WS parse error', e)
-          }
+          } catch (e) { console.error('WS parse error', e) }
         })
       },
       onDisconnect: () => setConnected(false),
@@ -511,7 +601,6 @@ export default function MonitorPage() {
     return () => { client.deactivate() }
   }, [])
 
-  // Age is computed relative to now — recompute from builtAtMs each render
   const displayedAccounts = useMemo(() => {
     const now = Date.now()
     return accounts.map((a) => ({
@@ -526,22 +615,27 @@ export default function MonitorPage() {
   }, [accounts])
 
   const master = displayedAccounts.find((a) => a.role === 'MASTER')
-  const copiers = displayedAccounts.filter((a) => a.role === 'COPIER')
+  const copiers = displayedAccounts
+    .filter((a) => a.role === 'COPIER')
+    .sort((a, b) => String(a.id).localeCompare(String(b.id)))
 
-  const totals = useMemo(() => {
-    const acc = { balance: 0, equity: 0, floating: 0, openLots: 0, todayTrades: 0 }
-    for (const a of copiers) {
-      acc.balance += Number(a.balance) || 0
-      acc.equity += Number(a.equity) || 0
-      acc.floating += Number(a.floating) || 0
-      acc.openLots += Number(a.openLots) || 0
-      acc.todayTrades += Number(a.todayTrades) || 0
-    }
-    return acc
-  }, [copiers])
+  const orderedCards = master ? [master, ...copiers] : copiers
 
   return (
     <div className="min-h-screen bg-gray-50/80">
+      {/* Cross-card highlight: single CSS rule for the whole page — no re-renders. */}
+      {highlightId && (
+        <style>{`
+          [data-master-link="${highlightId}"] {
+            background: rgba(99, 102, 241, 0.10) !important;
+            box-shadow: inset 3px 0 0 rgb(99, 102, 241);
+          }
+          [data-master-link="${highlightId}"] td {
+            color: rgb(30, 27, 75);
+          }
+        `}</style>
+      )}
+
       <header className="bg-white/95 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-30">
         <div className="w-full px-4 sm:px-6 py-3 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2.5">
@@ -579,69 +673,54 @@ export default function MonitorPage() {
         </div>
       </header>
 
-      <main className="w-full px-4 sm:px-6 py-4 space-y-3">
+      <main className="w-full px-4 sm:px-6 py-4">
         {loading ? (
           <div className="flex items-center justify-center py-24">
             <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
           </div>
         ) : error ? (
           <div className="text-center py-24 text-rose-500 text-sm">{error}</div>
+        ) : orderedCards.length === 0 ? (
+          <div className="text-center py-24">
+            <div className="text-gray-300 text-4xl mb-3">📡</div>
+            <p className="text-gray-400 text-sm">
+              Chưa có EA nào gửi report. Kiểm tra Master EA và Copier EA đã được cấu hình URL report chưa.
+            </p>
+          </div>
         ) : (
-          <>
-            {/* Copier totals — chỉ hiện khi có ít nhất 2 copier */}
-            {copiers.length >= 2 && (
-              <div className="bg-gradient-to-br from-indigo-50/50 to-white border border-indigo-100 rounded-2xl px-5 py-3 flex flex-wrap gap-x-6 gap-y-2 items-baseline">
-                <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-[0.08em]">
-                  Tổng copier
-                </span>
-                <span className="text-[13px] text-gray-500">
-                  Balance <b className="text-gray-900 tabular-nums">{fmtCent(totals.balance)}</b>
-                </span>
-                <span className="text-[13px] text-gray-500">
-                  Equity <b className="text-gray-900 tabular-nums">{fmtCent(totals.equity)}</b>
-                </span>
-                <span className="text-[13px] text-gray-500">
-                  Floating <b className={`tabular-nums ${totals.floating >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                    {fmtCent(totals.floating)}
-                  </b>
-                </span>
-                <span className="text-[13px] text-gray-500">
-                  Lot mở <b className="text-gray-900 tabular-nums">{fmtLot(totals.openLots)}</b>
-                </span>
-                <span className="text-[13px] text-gray-500">
-                  Lệnh hôm nay <b className="text-gray-900 tabular-nums">{totals.todayTrades}</b>
-                </span>
-              </div>
-            )}
-
-            {master && <AccountCard account={master} isMaster />}
-
-            {master && copiers.length > 0 && (
-              <div className="flex items-center gap-3 py-2">
-                <div className="flex-1 h-px bg-gray-200" />
-                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.12em]">
-                  Copier
-                </span>
-                <div className="flex-1 h-px bg-gray-200" />
-              </div>
-            )}
-
-            {copiers
-              .sort((a, b) => String(a.id).localeCompare(String(b.id)))
-              .map((c) => <AccountCard key={c.id} account={c} isMaster={false} />)
-            }
-
-            {copiers.length === 0 && !master && (
-              <div className="text-center py-24">
-                <div className="text-gray-300 text-4xl mb-3">📡</div>
-                <p className="text-gray-400 text-sm">
-                  Chưa có EA nào gửi report. Kiểm tra Master EA và Copier EA đã được cấu hình URL report chưa.
-                </p>
-              </div>
-            )}
-          </>
+          <div
+            className="grid gap-3"
+            style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))' }}
+          >
+            {orderedCards.map((a) => (
+              <AccountCard
+                key={a.id}
+                account={a}
+                isMaster={a.role === 'MASTER'}
+                onHoverLink={setHighlightId}
+                onShowPosition={setPositionModal}
+                onShowAccount={setAccountModal}
+              />
+            ))}
+          </div>
         )}
       </main>
+
+      {positionModal && (
+        <PositionDetailModal
+          position={positionModal.position}
+          accountLabel={positionModal.accountLabel}
+          isMaster={positionModal.isMaster}
+          onClose={() => setPositionModal(null)}
+        />
+      )}
+
+      {accountModal && (
+        <AccountDetailModal
+          account={accountModal}
+          onClose={() => setAccountModal(null)}
+        />
+      )}
 
       <style>{`
         @keyframes positionEnter {
@@ -659,22 +738,31 @@ export default function MonitorPage() {
 
         @keyframes valuePulseUp {
           0%   { transform: scale(1);    background: transparent; }
-          30%  { transform: scale(1.08); background: rgba(16, 185, 129, 0.18); }
+          30%  { transform: scale(1.06); background: rgba(16, 185, 129, 0.18); }
           100% { transform: scale(1);    background: transparent; }
         }
         @keyframes valuePulseDown {
           0%   { transform: scale(1);    background: transparent; }
-          30%  { transform: scale(1.08); background: rgba(244, 63, 94, 0.18); }
+          30%  { transform: scale(1.06); background: rgba(244, 63, 94, 0.18); }
           100% { transform: scale(1);    background: transparent; }
         }
         @keyframes valuePulse {
           0%   { transform: scale(1);    filter: brightness(1); }
-          30%  { transform: scale(1.06); filter: brightness(1.15); }
+          30%  { transform: scale(1.05); filter: brightness(1.15); }
           100% { transform: scale(1);    filter: brightness(1); }
         }
-        .value-pulse-up   { animation: valuePulseUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; border-radius: 4px; padding: 0 2px; }
-        .value-pulse-down { animation: valuePulseDown 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; border-radius: 4px; padding: 0 2px; }
+        .value-pulse-up   { animation: valuePulseUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; border-radius: 4px; padding: 0 3px; }
+        .value-pulse-down { animation: valuePulseDown 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; border-radius: 4px; padding: 0 3px; }
         .value-pulse      { animation: valuePulse 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .animate-fade-in { animation: fadeIn 0.15s ease-out both; }
+
+        @keyframes scaleIn {
+          from { opacity: 0; transform: scale(0.96); }
+          to   { opacity: 1; transform: scale(1); }
+        }
+        .animate-scale-in { animation: scaleIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) both; }
       `}</style>
     </div>
   )

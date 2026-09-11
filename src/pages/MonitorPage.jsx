@@ -5,6 +5,22 @@ import SockJS from 'sockjs-client'
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:9009'
 
 /* ================================================================
+   HARDCODED BLACKLIST — bỏ qua các lệnh cache sai
+   ================================================================ */
+const IGNORED_TICKETS = new Set([
+    '190694484',
+    '190686869',
+    '190682831',
+    '190641422',
+    '190611433',
+    '190601705',
+])
+
+const isIgnoredPosition = (p) => {
+    const t = String(p?.ticket ?? p?.key ?? p?.masterId ?? '')
+    return IGNORED_TICKETS.has(t)
+}
+/* ================================================================
    FORMAT HELPERS
    ================================================================ */
 
@@ -414,12 +430,7 @@ function PositionRow({ position, isEntering, isMaster, onHover, onClick }) {
                 {isNaN(profit) ? '—' : fmtCent(profit)}
             </td>
 
-            {/* Master */}
-            {!isMaster && (
-                <td className="px-3 py-2 whitespace-nowrap text-right font-mono text-[11px] tabular-nums text-indigo-600">
-                    {position.masterId || <span className="text-gray-300">—</span>}
-                </td>
-            )}
+
         </tr>
     )
 }
@@ -429,7 +440,12 @@ function PositionRow({ position, isEntering, isMaster, onHover, onClick }) {
    ================================================================ */
 
 function AccountCard({ account, isMaster, onHoverLink, onShowPosition, onShowAccount }) {
-    const { list, entered } = usePositionsWithExit(account.positions || [])
+    const filteredPositions = useMemo(
+        () => (account.positions || []).filter((p) => !isIgnoredPosition(p)),
+        [account.positions]
+    )
+    const { list, entered } = usePositionsWithExit(filteredPositions)
+
     const pFloat = useValuePulse(account.floating)
 
     const stale = account.reportAgeMs != null && account.reportAgeMs > 15000
@@ -531,12 +547,6 @@ function AccountCard({ account, isMaster, onHoverLink, onShowPosition, onShowAcc
                                     <th className="px-3 py-1.5 text-right text-[9px] font-semibold text-gray-400 uppercase tracking-wider">
                                         P/L
                                     </th>
-
-                                    {!isMaster && (
-                                        <th className="px-3 py-1.5 text-right text-[9px] font-semibold text-gray-400 uppercase tracking-wider">
-                                            ← Master
-                                        </th>
-                                    )}
                                 </tr>
                             </thead>
                             <tbody>

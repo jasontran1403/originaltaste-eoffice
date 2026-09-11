@@ -320,6 +320,24 @@ function AccountDetailModal({ account, onClose }) {
             <SectionLabel>Hôm nay</SectionLabel>
             <DetailRow label="Số lệnh" value={account.todayTrades ?? 0} />
             <DetailRow label="Tổng lot" value={fmtLot(account.todayLots)} />
+            <DetailRow
+                label="Lời/Lỗ hôm nay"
+                value={account.todayProfit != null ? fmtCent(account.todayProfit) : '—'}
+                valueClass={
+                    account.todayProfit == null ? 'text-gray-400'
+                        : account.todayProfit >= 0 ? 'text-emerald-600' : 'text-rose-500'
+                }
+            />
+            <DetailRow label="— Đã đóng" value={`${account.todayClosedCount ?? 0} lệnh · ${fmtLot(account.todayClosedLots)} lot`} />
+            <DetailRow
+                label="— Profit đã đóng"
+                value={account.todayClosedProfit != null ? fmtCent(account.todayClosedProfit) : '—'}
+                valueClass={
+                    account.todayClosedProfit == null ? 'text-gray-400'
+                        : account.todayClosedProfit >= 0 ? 'text-emerald-600' : 'text-rose-500'
+                }
+            />
+            <DetailRow label="— Đang mở" value={`${(account.todayTrades ?? 0) - (account.todayClosedCount ?? 0)} lệnh`} />
 
             <SectionLabel>Kết nối</SectionLabel>
             {account.hasReport && (
@@ -499,7 +517,7 @@ function AccountCard({ account, isMaster, onHoverLink, onShowPosition, onShowAcc
                 </button>
             </header>
 
-            {/* floating P/L */}
+            {/* floating P/L + tổng kết hôm nay */}
             <div className="px-4 py-3 border-b border-gray-100 bg-gradient-to-b from-white to-gray-50/40">
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
                     Floating P/L
@@ -512,8 +530,38 @@ function AccountCard({ account, isMaster, onHoverLink, onShowPosition, onShowAcc
                         className={`text-xl font-bold ${floatingClass}`}
                     />
                     <p className="text-[11px] text-gray-500 tabular-nums shrink-0">
-                        {openCount} lệnh · {fmtLot(account.openLots)} lot
+                        Đang mở {openCount} lệnh · {fmtLot(account.openLots)} lot
                     </p>
+                </div>
+
+                {/* Tổng kết trong ngày */}
+                <div className="mt-2 pt-2 border-t border-dashed border-gray-100 grid grid-cols-3 gap-2">
+                    <div>
+                        <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider">
+                            Tổng profit (hôm nay)
+                        </p>
+                        <p className={`text-[13px] font-bold tabular-nums ${account.todayProfit == null ? 'text-gray-400'
+                                : account.todayProfit >= 0 ? 'text-emerald-600' : 'text-rose-500'
+                            }`}>
+                            {account.todayProfit != null ? fmtCent(account.todayProfit) : '—'}
+                        </p>
+                    </div>
+                    <div className="text-center">
+                        <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider">
+                            Tổng lot (hôm nay)
+                        </p>
+                        <p className="text-[13px] font-bold text-gray-700 tabular-nums">
+                            {account.todayLots != null ? fmtLot(account.todayLots) : '—'}
+                        </p>
+                    </div>
+                    <div className="text-right">
+                        <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider">
+                            Số orders (hôm nay)
+                        </p>
+                        <p className="text-[13px] font-bold text-gray-700 tabular-nums">
+                            {account.todayTrades ?? '—'}
+                        </p>
+                    </div>
                 </div>
             </div>
 
@@ -646,15 +694,21 @@ export default function MonitorPage() {
 
     const displayedAccounts = useMemo(() => {
         const now = Date.now()
-        return accounts.map((a) => ({
-            ...a,
-            reportAgeMs: a.hasReport && a.builtAtMs != null
-                ? Math.max(0, now - a.builtAtMs + (a.reportAgeMs || 0))
-                : a.reportAgeMs,
-            lastPollAgeMs: a.lastPollAgeMs != null && a.builtAtMs != null
-                ? Math.max(0, now - a.builtAtMs + a.lastPollAgeMs)
-                : a.lastPollAgeMs,
-        }))
+        return accounts.map((a) => {
+            const positions = (a.positions || []).filter((p) => !isIgnoredPosition(p))
+            return {
+                ...a,
+                positions,
+                openCount: positions.length,
+                openLots: positions.reduce((s, p) => s + (Number(p.volume) || 0), 0),
+                reportAgeMs: a.hasReport && a.builtAtMs != null
+                    ? Math.max(0, now - a.builtAtMs + (a.reportAgeMs || 0))
+                    : a.reportAgeMs,
+                lastPollAgeMs: a.lastPollAgeMs != null && a.builtAtMs != null
+                    ? Math.max(0, now - a.builtAtMs + a.lastPollAgeMs)
+                    : a.lastPollAgeMs,
+            }
+        })
     }, [accounts])
 
     const master = displayedAccounts.find((a) => a.role === 'MASTER')

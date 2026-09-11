@@ -535,7 +535,7 @@ function AccountCard({ account, isMaster, onHoverLink, onShowPosition, onShowAcc
                 </div>
 
                 {/* Tổng kết trong ngày */}
-                <div className="mt-2 pt-2 border-t border-dashed border-gray-100 grid grid-cols-3 gap-2">
+                <div className="mt-2 pt-2 border-t border-dashed border-gray-100 grid grid-cols-2 gap-2">
                     {/* <div>
                         <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider">
                             Tổng profit (hôm nay)
@@ -546,7 +546,7 @@ function AccountCard({ account, isMaster, onHoverLink, onShowPosition, onShowAcc
                             {account.todayProfit != null ? fmtCent(account.todayProfit) : '—'}
                         </p>
                     </div> */}
-                    <div className="text-center">
+                    <div className="text-left">
                         <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider">
                             Tổng lot (hôm nay)
                         </p>

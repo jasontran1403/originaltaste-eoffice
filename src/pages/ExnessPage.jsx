@@ -109,7 +109,7 @@ function OpenRow({ trade: t, isNew, isLeaving }) {
       <td className="px-3 py-2 text-xs text-slate-300 font-medium">{t.symbol || '—'}</td>
       <td className="px-3 py-2 text-right text-xs tabular-nums text-slate-300">{fmtVN(t.volume, 2)}</td>
       <td className="px-3 py-2 text-right text-xs tabular-nums text-slate-400">{fmtPrice(t.openPrice)}</td>
-      <td className="px-3 py-2 text-xs text-slate-600 tabular-nums">{fmtTime(t.openTime)}</td>
+      <td className="px-3 py-2 text-xs text-slate-600 tabular-nums text-right">{fmtTime(t.openTime)}</td>
     </tr>
   )
 }

@@ -147,6 +147,7 @@ function DateRangePicker({ startKey, endKey, onChange }) {
   const [open, setOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const ref = useRef(null)
+  const panelRef = useRef(null)
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -176,12 +177,31 @@ function DateRangePicker({ startKey, endKey, onChange }) {
     }
   }
 
+  // Close on outside click — phải kiểm tra cả panel (vì trên mobile panel
+  // render ra ngoài `ref` bằng portal-like fixed nên vẫn nằm trong DOM
+  // nhưng không phải con của ref)
   useEffect(() => {
     if (!open) return
-    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    const handler = (e) => {
+      if (ref.current && ref.current.contains(e.target)) return
+      if (panelRef.current && panelRef.current.contains(e.target)) return
+      setOpen(false)
+    }
     document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    document.addEventListener('touchstart', handler)
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      document.removeEventListener('touchstart', handler)
+    }
   }, [open])
+
+  // Khi mở trên mobile, khoá scroll body để không bị nhảy khi chọn tháng
+  useEffect(() => {
+    if (!open || !isMobile) return
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prevOverflow }
+  }, [open, isMobile])
 
   const fmtDisplay = (k) => {
     if (!k) return ''
@@ -192,6 +212,80 @@ function DateRangePicker({ startKey, endKey, onChange }) {
   const label = startKey && endKey
     ? (startKey === endKey ? fmtDisplay(startKey) : `${fmtDisplay(startKey)} – ${fmtDisplay(endKey)}`)
     : startKey ? `${fmtDisplay(startKey)} – ...` : 'Chọn ngày'
+
+  // Nội dung panel — dùng chung cho cả 2 layout
+  const PanelContent = (
+    <>
+      <div className="flex items-center justify-between mb-3">
+        <button onClick={prevMonth}
+          className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+        <button onClick={nextMonth}
+          className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      </div>
+
+      <div className={isMobile ? '' : 'grid grid-cols-2 gap-6'}>
+        <CalendarMonth year={leftYear} month={leftMonth}
+          startKey={startKey} endKey={endKey} hoverKey={hoverKey} todayKey={todayKey}
+          onDayClick={handleDayClick} onDayHover={setHoverKey} />
+        {!isMobile && (
+          <CalendarMonth year={rightYear} month={rightMonth}
+            startKey={startKey} endKey={endKey} hoverKey={hoverKey} todayKey={todayKey}
+            onDayClick={handleDayClick} onDayHover={setHoverKey} />
+        )}
+      </div>
+
+      <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-gray-100">
+        {[
+          { label: 'Hôm nay', fn: () => { const k = dateKey(today.y, today.m, today.d); onChange(k, k); setOpen(false) } },
+          {
+            label: 'Hôm qua', fn: () => {
+              const y = new Date(Date.now() + GMT7 - 86400000)
+              const k = dateKey(y.getUTCFullYear(), y.getUTCMonth(), y.getUTCDate())
+              onChange(k, k); setOpen(false)
+            }
+          },
+          {
+            label: '7 ngày', fn: () => {
+              const from = new Date(Date.now() + GMT7 - 6 * 86400000)
+              onChange(dateKey(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()),
+                dateKey(today.y, today.m, today.d)); setOpen(false)
+            }
+          },
+          {
+            label: '30 ngày', fn: () => {
+              const from = new Date(Date.now() + GMT7 - 29 * 86400000)
+              onChange(dateKey(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()),
+                dateKey(today.y, today.m, today.d)); setOpen(false)
+            }
+          },
+          {
+            label: 'Tháng này', fn: () => {
+              onChange(dateKey(today.y, today.m, 1), dateKey(today.y, today.m, today.d)); setOpen(false)
+            }
+          },
+        ].map(({ label, fn }) => (
+          <button key={label} onClick={fn}
+            className="px-2.5 py-1 text-[11px] rounded-md bg-gray-100
+                       hover:bg-violet-100 hover:text-violet-700 text-gray-600
+                       font-medium transition-colors">
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {startKey && !endKey && (
+        <p className="text-[10px] text-gray-400 mt-2 text-center">Chọn ngày kết thúc</p>
+      )}
+    </>
+  )
 
   return (
     <div ref={ref} className="relative">
@@ -208,78 +302,36 @@ function DateRangePicker({ startKey, endKey, onChange }) {
         </svg>
       </button>
 
-      {open && (
-        <div className="absolute right-0 top-full mt-2 z-50 bg-white rounded-xl shadow-xl
-                        border border-gray-200 p-4"
-          style={{ minWidth: isMobile ? 280 : 560 }}>
-          <div className="flex items-center justify-between mb-3">
-            <button onClick={prevMonth}
-              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <button onClick={nextMonth}
-              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
+      {/* ── Mobile: bottom-sheet fixed, không bị overflow cắt ── */}
+      {open && isMobile && (
+        <div
+          className="fixed inset-0 z-[100] flex items-end justify-center"
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false) }}
+          onTouchStart={(e) => { if (e.target === e.currentTarget) setOpen(false) }}
+        >
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div
+            ref={panelRef}
+            className="relative w-full max-w-md bg-white rounded-t-2xl shadow-2xl
+                       p-4 pb-5 max-h-[90vh] overflow-y-auto"
+            style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom))' }}
+          >
+            {/* Drag handle */}
+            <div className="w-10 h-1 rounded-full bg-gray-300 mx-auto mb-3" />
+            {PanelContent}
           </div>
+        </div>
+      )}
 
-          <div className={isMobile ? '' : 'grid grid-cols-2 gap-6'}>
-            <CalendarMonth year={leftYear} month={leftMonth}
-              startKey={startKey} endKey={endKey} hoverKey={hoverKey} todayKey={todayKey}
-              onDayClick={handleDayClick} onDayHover={setHoverKey} />
-            {!isMobile && (
-              <CalendarMonth year={rightYear} month={rightMonth}
-                startKey={startKey} endKey={endKey} hoverKey={hoverKey} todayKey={todayKey}
-                onDayClick={handleDayClick} onDayHover={setHoverKey} />
-            )}
-          </div>
-
-          <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-gray-100">
-            {[
-              { label: 'Hôm nay', fn: () => { const k = dateKey(today.y, today.m, today.d); onChange(k, k); setOpen(false) } },
-              {
-                label: 'Hôm qua', fn: () => {
-                  const y = new Date(Date.now() + GMT7 - 86400000)
-                  const k = dateKey(y.getUTCFullYear(), y.getUTCMonth(), y.getUTCDate())
-                  onChange(k, k); setOpen(false)
-                }
-              },
-              {
-                label: '7 ngày', fn: () => {
-                  const from = new Date(Date.now() + GMT7 - 6 * 86400000)
-                  onChange(dateKey(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()),
-                    dateKey(today.y, today.m, today.d)); setOpen(false)
-                }
-              },
-              {
-                label: '30 ngày', fn: () => {
-                  const from = new Date(Date.now() + GMT7 - 29 * 86400000)
-                  onChange(dateKey(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()),
-                    dateKey(today.y, today.m, today.d)); setOpen(false)
-                }
-              },
-              {
-                label: 'Tháng này', fn: () => {
-                  onChange(dateKey(today.y, today.m, 1), dateKey(today.y, today.m, today.d)); setOpen(false)
-                }
-              },
-            ].map(({ label, fn }) => (
-              <button key={label} onClick={fn}
-                className="px-2.5 py-1 text-[11px] rounded-md bg-gray-100
-                           hover:bg-violet-100 hover:text-violet-700 text-gray-600
-                           font-medium transition-colors">
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {startKey && !endKey && (
-            <p className="text-[10px] text-gray-400 mt-2 text-center">Chọn ngày kết thúc</p>
-          )}
+      {/* ── Desktop: dropdown absolute như cũ ── */}
+      {open && !isMobile && (
+        <div
+          ref={panelRef}
+          className="absolute right-0 top-full mt-2 z-50 bg-white rounded-xl shadow-xl
+                     border border-gray-200 p-4"
+          style={{ minWidth: 560 }}
+        >
+          {PanelContent}
         </div>
       )}
     </div>
@@ -682,8 +734,7 @@ export default function ExnessPage() {
   ]
 
   return (
-    <div className="h-[100dvh] bg-gray-50 text-gray-900 flex flex-col overflow-hidden">
-
+    <div className="min-h-[100dvh] md:h-[100dvh] bg-gray-50 text-gray-900 flex flex-col md:overflow-hidden">
       <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3
                          flex items-center justify-between gap-3 flex-wrap z-30 shadow-sm flex-shrink-0">
         <div className="flex items-center gap-3 flex-wrap">
@@ -728,7 +779,7 @@ export default function ExnessPage() {
         </div>
       </header>
 
-      <main className="flex-1 min-h-0 flex flex-col p-4 sm:p-5 gap-4">
+      <main className="flex-1 md:min-h-0 flex flex-col p-4 sm:p-5 gap-4">
         {!selectedId ? (
           <div className="flex-1 flex items-center justify-center">
             <p className="text-gray-400 text-sm">
@@ -740,10 +791,9 @@ export default function ExnessPage() {
             <div className="w-7 h-7 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1 min-h-0">
-
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:flex-1 md:min-h-0">
             {/* CỘT TRÁI: ĐANG MỞ */}
-            <div className="bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden shadow-sm min-h-0">
+            <div className="bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden shadow-sm md:min-h-0">
               <ColHeader title="Open Trade" totalLot={openLot} totalCount={openPositions.length}
                 totalPnL={openPnL} accent="bg-blue-500"
                 pnlPulseKey={openPnlPulse.key} pnlDir={openPnlPulse.dir} />
@@ -774,13 +824,16 @@ export default function ExnessPage() {
             </div>
 
             {/* CỘT PHẢI: ĐÃ ĐÓNG */}
-            <div className="bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden shadow-sm min-h-0">
+            <div className="bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden shadow-sm md:min-h-0">
               <ColHeader title="Histories" totalLot={closedLot} totalCount={closedPositions.length}
                 totalPnL={closedPnL} accent="bg-amber-500"
                 pnlPulseKey={closedPnlPulse.key} pnlDir={closedPnlPulse.dir}>
                 <DateRangePicker startKey={dateStart} endKey={dateEnd} onChange={handleDateChange} />
               </ColHeader>
-              <div ref={closedScrollRef} className="flex-1 overflow-auto min-h-0">
+              <div
+                ref={closedScrollRef}
+                className="overflow-auto md:flex-1 md:min-h-0 h-[600px] md:h-auto md:min-h-0"
+              >
                 {closedPositions.length === 0 ? (
                   <div className="py-16 text-center text-gray-300 text-sm select-none">
                     {loading ? 'Đang tải...' : 'Không có lệnh nào trong khoảng thời gian này'}

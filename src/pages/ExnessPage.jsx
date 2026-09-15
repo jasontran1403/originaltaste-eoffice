@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Client } from '@stomp/stompjs'
 import SockJS from 'sockjs-client'
-
+import ConfirmModal from "../components/common/ConfirmModal"
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:9009'
 
 // Map copierId → tên hiển thị
@@ -23,13 +23,12 @@ const todayGmt7 = () => {
 const dateKey = (y, m, d) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
 const parseKey = (k) => { const [y, m, d] = k.split('-').map(Number); return { y, m: m - 1, d } }
 const daysInMonth = (y, m) => new Date(y, m + 1, 0).getDate()
-const dow0 = (y, m) => new Date(y, m, 1).getDay()  // 0=Sun
+const dow0 = (y, m) => new Date(y, m, 1).getDay()
 const keyToDate = (k) => { const { y, m, d } = parseKey(k); return new Date(y, m, d) }
 const isBefore = (a, b) => keyToDate(a) < keyToDate(b)
 const isAfter = (a, b) => keyToDate(a) > keyToDate(b)
 
-// ISO "YYYY-MM-DD" → API param
-const toApiDate = (k) => k   // already YYYY-MM-DD
+const toApiDate = (k) => k
 
 /* ================================================================
    FORMAT HELPERS
@@ -52,11 +51,9 @@ const fmtTime = (iso) => { const d = toGmt7(iso); return d ? d.toISOString().sub
 const fmtTimeRaw = (raw) => {
   if (!raw) return '—'
   const s = String(raw)
-  // MT5 format: "YYYY.MM.DD HH:MM:SS" — giờ là UTC+0, cần +7h
   const mq5 = s.match(/(\d{4})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2}):(\d{2})/)
   if (mq5) {
     const [, y, mo, d, h, mi, se] = mq5.map(Number)
-    // Tạo Date ở UTC, rồi cộng GMT+7
     const dt = new Date(Date.UTC(y, mo - 1, d, h, mi, se) + GMT7)
     return dt.toISOString().substring(11, 19)
   }
@@ -96,9 +93,8 @@ const DAYS_VI = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7']
 
 function CalendarMonth({ year, month, startKey, endKey, hoverKey, onDayClick, onDayHover, todayKey }) {
   const days = daysInMonth(year, month)
-  const startDow = dow0(year, month)   // 0=Sun
+  const startDow = dow0(year, month)
   const cells = []
-  // blank cells
   for (let i = 0; i < startDow; i++) cells.push(null)
   for (let d = 1; d <= days; d++) cells.push(d)
 
@@ -145,7 +141,6 @@ function DateRangePicker({ startKey, endKey, onChange }) {
   const today = todayGmt7()
   const todayKey = dateKey(today.y, today.m, today.d)
 
-  // Calendar pages: left = earlier, right = current (or left+1)
   const [leftYear, setLeftYear] = useState(today.m === 0 ? today.y - 1 : today.y)
   const [leftMonth, setLeftMonth] = useState(today.m === 0 ? 11 : today.m - 1)
   const [hoverKey, setHoverKey] = useState(null)
@@ -153,14 +148,12 @@ function DateRangePicker({ startKey, endKey, onChange }) {
   const [isMobile, setIsMobile] = useState(false)
   const ref = useRef(null)
 
-  // Responsive
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
     check(); window.addEventListener('resize', check)
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  // Right month = left+1
   const rightYear = leftMonth === 11 ? leftYear + 1 : leftYear
   const rightMonth = leftMonth === 11 ? 0 : leftMonth + 1
 
@@ -175,17 +168,14 @@ function DateRangePicker({ startKey, endKey, onChange }) {
 
   const handleDayClick = (k) => {
     if (!startKey || (startKey && endKey)) {
-      // reset → pick start
       onChange(k, null)
     } else {
-      // pick end
       if (isBefore(k, startKey)) onChange(k, startKey)
       else onChange(startKey, k)
       setOpen(false)
     }
   }
 
-  // Close on outside click
   useEffect(() => {
     if (!open) return
     const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
@@ -205,7 +195,6 @@ function DateRangePicker({ startKey, endKey, onChange }) {
 
   return (
     <div ref={ref} className="relative">
-      {/* Trigger button */}
       <button onClick={() => setOpen(o => !o)}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300
                    bg-white hover:bg-gray-50 text-xs font-medium text-gray-700
@@ -219,12 +208,10 @@ function DateRangePicker({ startKey, endKey, onChange }) {
         </svg>
       </button>
 
-      {/* Dropdown */}
       {open && (
         <div className="absolute right-0 top-full mt-2 z-50 bg-white rounded-xl shadow-xl
                         border border-gray-200 p-4"
           style={{ minWidth: isMobile ? 280 : 560 }}>
-          {/* Nav */}
           <div className="flex items-center justify-between mb-3">
             <button onClick={prevMonth}
               className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
@@ -240,7 +227,6 @@ function DateRangePicker({ startKey, endKey, onChange }) {
             </button>
           </div>
 
-          {/* Calendar grid */}
           <div className={isMobile ? '' : 'grid grid-cols-2 gap-6'}>
             <CalendarMonth year={leftYear} month={leftMonth}
               startKey={startKey} endKey={endKey} hoverKey={hoverKey} todayKey={todayKey}
@@ -252,7 +238,6 @@ function DateRangePicker({ startKey, endKey, onChange }) {
             )}
           </div>
 
-          {/* Quick picks */}
           <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-gray-100">
             {[
               { label: 'Hôm nay', fn: () => { const k = dateKey(today.y, today.m, today.d); onChange(k, k); setOpen(false) } },
@@ -292,7 +277,6 @@ function DateRangePicker({ startKey, endKey, onChange }) {
             ))}
           </div>
 
-          {/* Hint */}
           {startKey && !endKey && (
             <p className="text-[10px] text-gray-400 mt-2 text-center">Chọn ngày kết thúc</p>
           )}
@@ -330,19 +314,44 @@ function ColHeader({ title, totalLot, totalCount, totalPnL, accent, pnlPulseKey,
 }
 
 /* ================================================================
-   TABLE HEAD (sticky)
+   TABLE HEAD
    ================================================================ */
 function TableHead({ cols }) {
   return (
     <thead className="sticky top-0 z-10 bg-white">
       <tr className="border-b border-gray-100">
-        {cols.map((h, i) => (
-          <th key={h} className={`px-3 py-2 text-[10px] font-semibold text-gray-400
-            uppercase tracking-wider whitespace-nowrap
-            ${i >= 3 ? 'text-right' : 'text-left'}`}>{h}</th>
-        ))}
+        {cols.map((c, i) => {
+          const label = typeof c === 'string' ? c : c.label
+          const hideOnMobile = typeof c === 'object' && c.hideOnMobile
+          return (
+            <th key={label}
+              className={`px-3 py-2 text-[10px] font-semibold text-gray-400
+                uppercase tracking-wider whitespace-nowrap
+                ${i >= 3 ? 'text-right' : 'text-left'}
+                ${hideOnMobile ? 'hidden md:table-cell' : ''}`}>
+              {label}
+            </th>
+          )
+        })}
       </tr>
     </thead>
+  )
+}
+
+/* ================================================================
+   SYMBOL + SIDE
+   ================================================================ */
+function SymbolWithSide({ symbol, direction }) {
+  const isBuy = direction === 'BUY'
+  return (
+    <div className="flex items-center gap-1">
+      <span className={`text-xs font-bold ${isBuy ? 'text-emerald-600' : 'text-rose-500'}`}>
+        {symbol || '—'}
+      </span>
+      <span className={`text-[10px] font-bold ${isBuy ? 'text-emerald-500' : 'text-rose-400'}`}>
+        {isBuy ? '▲' : '▼'}
+      </span>
+    </div>
   )
 }
 
@@ -350,21 +359,33 @@ function TableHead({ cols }) {
    OPEN ROW
    ================================================================ */
 function OpenRow({ pos, isNew, isLeaving }) {
-  const dir = pos.direction === 'BUY'; const pl = Number(pos.profit || 0)
+  const pl = Number(pos.profit || 0)
   return (
     <tr className={`border-b border-gray-100 transition-all duration-300
       ${isNew ? 'row-enter-open' : ''} ${isLeaving ? 'row-leave' : 'hover:bg-blue-50/40'}`}>
-      <td className="px-3 py-2.5 text-[11px] text-gray-400 tabular-nums font-mono">#{pos.ticket}</td>
-      <td className="px-3 py-2.5">
-        <span className={`text-xs font-bold ${dir ? 'text-emerald-600' : 'text-rose-500'}`}>{pos.direction}</span>
+      <td className="px-3 py-2.5 text-[11px] text-gray-400 tabular-nums font-mono align-top">
+        <div>#{pos.ticket}</div>
+        <div className="md:hidden text-[10px] text-gray-400 mt-0.5">{fmtTimeRaw(pos.openTime)}</div>
       </td>
-      <td className="px-3 py-2.5 text-xs text-gray-700 font-medium">{pos.symbol || '—'}</td>
+      <td className="px-3 py-2.5 hidden md:table-cell">
+        <span className={`text-xs font-bold ${pos.direction === 'BUY' ? 'text-emerald-600' : 'text-rose-500'}`}>
+          {pos.direction}
+        </span>
+      </td>
+      <td className="px-3 py-2.5">
+        <div className="hidden md:block text-xs text-gray-700 font-medium">{pos.symbol || '—'}</div>
+        <div className="md:hidden">
+          <SymbolWithSide symbol={pos.symbol} direction={pos.direction} />
+        </div>
+      </td>
       <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-700">{fmtVN(pos.volume, 2)}</td>
       <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-600">{fmtPrice(pos.openPrice)}</td>
       <td className={`px-3 py-2.5 text-right text-xs tabular-nums font-semibold ${profitClass(pl)}`}>
         {`${profitSign(pl)}${fmtVN(pl)}`}
       </td>
-      <td className="px-3 py-2.5 text-right text-xs text-gray-400 tabular-nums">{fmtTimeRaw(pos.openTime)}</td>
+      <td className="px-3 py-2.5 text-right text-xs text-gray-400 tabular-nums hidden md:table-cell">
+        {fmtTimeRaw(pos.openTime)}
+      </td>
     </tr>
   )
 }
@@ -373,41 +394,64 @@ function OpenRow({ pos, isNew, isLeaving }) {
    CLOSED ROW
    ================================================================ */
 function ClosedRow({ trade: t, isNew }) {
-  const dir = t.direction === 'BUY'; const net = calcNet(t); const hasNet = t.profit != null
+  const dir = t.direction === 'BUY'
+  const net = calcNet(t)
+  const hasNet = t.profit != null
+  const closePriceClass = !hasNet
+    ? 'text-gray-400'
+    : net > 0.001 ? 'text-emerald-600' : net < -0.001 ? 'text-rose-500' : 'text-gray-400'
+
   return (
     <tr className={`border-b border-gray-100 transition-all duration-300
       ${isNew ? 'row-enter-closed' : ''} hover:bg-amber-50/40`}>
-      <td className="px-3 py-2.5 text-[11px] text-gray-400 tabular-nums font-mono">#{t.positionTicket}</td>
-      <td className="px-3 py-2.5">
+      <td className="px-3 py-2.5 text-[11px] text-gray-400 tabular-nums font-mono align-top">
+        <div>#{t.positionTicket}</div>
+        <div className="md:hidden text-[10px] text-gray-400 mt-0.5">{fmtTime(t.closeTime)}</div>
+      </td>
+      <td className="px-3 py-2.5 hidden md:table-cell">
         <span className={`text-xs font-bold ${dir ? 'text-emerald-600' : 'text-rose-500'}`}>{t.direction}</span>
       </td>
-      <td className="px-3 py-2.5 text-xs text-gray-700 font-medium">{t.symbol || '—'}</td>
+      <td className="px-3 py-2.5">
+        <div className="hidden md:block text-xs text-gray-700 font-medium">{t.symbol || '—'}</div>
+        <div className="md:hidden">
+          <SymbolWithSide symbol={t.symbol} direction={t.direction} />
+        </div>
+      </td>
       <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-700">{fmtVN(t.volume, 2)}</td>
-      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-500">{fmtPrice(t.openPrice)}</td>
-      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-500">{fmtPrice(t.closePrice)}</td>
+      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-500 hidden md:table-cell">
+        {fmtPrice(t.openPrice)}
+      </td>
+      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-500 hidden md:table-cell">
+        {fmtPrice(t.closePrice)}
+      </td>
+      <td className="px-3 py-2.5 text-right text-xs tabular-nums md:hidden align-top">
+        <div className="text-gray-500">{fmtPrice(t.openPrice)}</div>
+        <div className={`${closePriceClass} font-semibold mt-0.5`}>{fmtPrice(t.closePrice)}</div>
+      </td>
       <td className={`px-3 py-2.5 text-right text-xs tabular-nums font-semibold
         ${!hasNet ? 'text-gray-300' : profitClass(net)}`}>
         {!hasNet ? '—' : `${profitSign(net)}${fmtVN(net)}`}
       </td>
-      <td className="px-3 py-2.5 text-right text-xs text-gray-400 tabular-nums">{fmtTime(t.closeTime)}</td>
+      <td className="px-3 py-2.5 text-right text-xs text-gray-400 tabular-nums hidden md:table-cell">
+        {fmtTime(t.closeTime)}
+      </td>
     </tr>
   )
 }
 
 /* ================================================================
-   BOT TOGGLE
+   BOT TOGGLE — giờ chỉ "request", không gọi API
    ================================================================ */
-function BotToggle({ copierId, active, onToggle, toggling }) {
+function BotToggle({ copierId, active, onRequestToggle, toggling }) {
   return (
-    <button onClick={() => onToggle(copierId, !active)} disabled={toggling || !copierId}
+    <button onClick={() => onRequestToggle(copierId, !active)} disabled={toggling || !copierId}
       className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-semibold
         transition-all duration-200 shadow-sm select-none border
         ${active ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-500'
           : 'bg-white hover:bg-gray-50 text-gray-600 border-gray-300'}
         ${(toggling || !copierId) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
       <span className={`w-2 h-2 rounded-full flex-shrink-0 ${active ? 'bg-white animate-pulse' : 'bg-gray-400'}`} />
-      {toggling ? 'Đang xử lý...' : active ? 'Đang chạy' : 'Đã tắt'}
-      <span className="text-[10px] opacity-60 hidden sm:inline">({active ? 'click tắt' : 'click bật'})</span>
+      {toggling ? 'Đang xử lý...' : active ? 'Đang bật' : 'Đang tắt'}
     </button>
   )
 }
@@ -419,7 +463,7 @@ export default function ExnessPage() {
   const [copierIds, setCopierIds] = useState([])
   const [selectedId, setSelectedId] = useState(null)
   const [openPositions, setOpenPositions] = useState([])
-  const [syncReady, setSyncReady] = useState(false)   // false = chưa nhận data từ MT5
+  const [syncReady, setSyncReady] = useState(false)
   const syncTimerRef = useRef(null)
   const [closedPositions, setClosedPositions] = useState([])
 
@@ -431,7 +475,9 @@ export default function ExnessPage() {
   const [newClosedIds, setNewClosedIds] = useState(new Set())
   const [leavingIds, setLeavingIds] = useState(new Set())
 
-  // Date range — default: today only
+  // Confirm toggle: null hoặc { copierId, nextActive }
+  const [confirmToggle, setConfirmToggle] = useState(null)
+
   const initToday = () => {
     const t = todayGmt7()
     return dateKey(t.y, t.m, t.d)
@@ -442,26 +488,22 @@ export default function ExnessPage() {
   const closedScrollRef = useRef(null)
   const clientRef = useRef(null)
 
-  /* helpers */
   const applyState = useCallback((s) => {
     if (!s || !s.copierId) return
     setStateMap(prev => ({ ...prev, [s.copierId]: { active: !!s.active, updatedAt: s.updatedAt || null, changedBy: s.changedBy || null } }))
   }, [])
   const currentActive = selectedId ? (stateMap[selectedId]?.active ?? true) : true
 
-  /* ── fetch copier ids ─────────────────────────────────────────── */
   useEffect(() => {
     fetch(`${BASE}/api/public/mt5/copier/ids`).then(r => r.json()).then(d => {
       const ids = d.copierIds || []; setCopierIds(ids)
       if (ids.length > 0 && !selectedId) {
-        // Ưu tiên COPIER_3 nếu có, nếu không thì lấy phần tử đầu
         const preferred = ids.find(id => id === 'COPIER_3') || ids[0]
         setSelectedId(preferred)
       }
     }).catch(console.error)
   }, [])
 
-  /* ── fetch history by date range ──────────────────────────────── */
   const fetchHistory = useCallback(async (copierId, from, to) => {
     if (!copierId || !from || !to) return
     setLoading(true)
@@ -477,25 +519,19 @@ export default function ExnessPage() {
     finally { setLoading(false) }
   }, [applyState])
 
-  // Re-fetch when account or date changes
   useEffect(() => {
     if (!selectedId || !dateStart || !dateEnd) return
     setOpenPositions([])
     setSyncReady(false)
-    // Start 5s timer — nếu sau 5s chưa có ACCOUNT từ monitor thì hiện "không có lệnh"
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
     syncTimerRef.current = setTimeout(() => setSyncReady(true), 5000)
     fetchHistory(selectedId, dateStart, dateEnd)
   }, [selectedId, dateStart, dateEnd, fetchHistory])
 
-
-
-  /* ── date range handler ─────────────────────────────────────────*/
   const handleDateChange = useCallback((start, end) => {
     setDateStart(start); setDateEnd(end || null)
   }, [])
 
-  /* ── WebSocket ────────────────────────────────────────────────── */
   useEffect(() => {
     if (!selectedId) return
     const client = new Client({
@@ -504,7 +540,6 @@ export default function ExnessPage() {
       onConnect: () => {
         setConnected(true)
 
-        // Monitor: open positions realtime
         client.subscribe('/topic/mt5-monitor', (msg) => {
           try {
             const payload = JSON.parse(msg.body)
@@ -512,7 +547,6 @@ export default function ExnessPage() {
             const acc = payload.account
             if (!acc || acc.id !== selectedId) return
             const positions = acc.positions || []
-            // Đã nhận data từ MT5 → hủy timer, hiện trạng thái thực
             if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
             setSyncReady(true)
             setOpenPositions(prev => {
@@ -535,7 +569,6 @@ export default function ExnessPage() {
           } catch (e) { console.error('Monitor WS err', e) }
         })
 
-        // Exness: trade events + state
         client.subscribe(`/topic/mt5-exness/${selectedId}`, (msg) => {
           try {
             const payload = JSON.parse(msg.body)
@@ -546,7 +579,6 @@ export default function ExnessPage() {
             if (payload.type === 'TRADE_EVENT' && payload.event !== 'OPEN') {
               const trade = payload.trade; const tk = trade.positionTicket
               setTimeout(() => {
-                // Chỉ append nếu lệnh đóng trong khoảng date đang xem
                 const closeDate = trade.closeTime
                   ? (() => { const d = toGmt7(trade.closeTime); return d ? dateKey(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) : null })()
                   : null
@@ -574,21 +606,28 @@ export default function ExnessPage() {
     }
   }, [selectedId, applyState, dateStart, dateEnd])
 
-  /* ── toggle ─────────────────────────────────────────────────────*/
-  const handleToggle = useCallback(async (copierId, active) => {
-    if (!copierId || toggling) return; setToggling(true)
+  /* ── Toggle flow: bấm nút → mở confirm → OK mới gọi API ────── */
+  const requestToggle = useCallback((copierId, nextActive) => {
+    if (!copierId || toggling) return
+    setConfirmToggle({ copierId, nextActive })
+  }, [toggling])
+
+  const doToggle = useCallback(async () => {
+    if (!confirmToggle) return
+    const { copierId, nextActive } = confirmToggle
+    setConfirmToggle(null)
+    setToggling(true)
     try {
       const r = await fetch(`${BASE}/api/public/mt5/copier/state`,
         {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ copierId, active, changedBy: 'UI' })
+          body: JSON.stringify({ copierId, active: nextActive, changedBy: 'UI' })
         })
       applyState(await r.json())
     } catch (e) { console.error(e) }
     finally { setToggling(false) }
-  }, [toggling, applyState])
+  }, [confirmToggle, applyState])
 
-  /* ── summaries ───────────────────────────────────────────────── */
   const openLot = useMemo(() => openPositions.reduce((s, p) => s + (p.volume || 0), 0), [openPositions])
   const openPnL = useMemo(() => openPositions.reduce((s, p) => s + Number(p.profit || 0), 0), [openPositions])
   const closedLot = useMemo(() => closedPositions.reduce((s, t) => s + (t.volume || 0), 0), [closedPositions])
@@ -597,7 +636,6 @@ export default function ExnessPage() {
   const openPnlPulse = useValuePulse(openPnL)
   const closedPnlPulse = useValuePulse(closedPnL)
 
-  /* ── state badge ─────────────────────────────────────────────── */
   const stateInfo = selectedId ? stateMap[selectedId] : null
   const stateAge = stateInfo?.updatedAt ? (() => {
     try {
@@ -608,14 +646,30 @@ export default function ExnessPage() {
     } catch { return '' }
   })() : ''
 
-  const OPEN_COLS = ['Ticket', 'Side', 'Symbol', 'Lot', 'Open', 'P/L', 'Giờ mở']
-  const CLOSED_COLS = ['Ticket', 'Side', 'Symbol', 'Lot', 'Open', 'Close', 'P/L', 'Giờ đóng']
+  const OPEN_COLS = [
+    { label: 'Ticket' },
+    { label: 'Side', hideOnMobile: true },
+    { label: 'Symbol' },
+    { label: 'Lot' },
+    { label: 'Open' },
+    { label: 'P/L' },
+    { label: 'Giờ mở', hideOnMobile: true },
+  ]
+  const CLOSED_COLS = [
+    { label: 'Ticket' },
+    { label: 'Side', hideOnMobile: true },
+    { label: 'Symbol' },
+    { label: 'Lot' },
+    { label: 'Open', hideOnMobile: true },
+    { label: 'Close', hideOnMobile: true },
+    { label: 'Price', hideOnMobile: false },
+    { label: 'P/L' },
+    { label: 'Giờ đóng', hideOnMobile: true },
+  ]
 
-  /* ── render ──────────────────────────────────────────────────── */
   return (
     <div className="h-[100dvh] bg-gray-50 text-gray-900 flex flex-col overflow-hidden">
 
-      {/* HEADER */}
       <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3
                          flex items-center justify-between gap-3 flex-wrap z-30 shadow-sm flex-shrink-0">
         <div className="flex items-center gap-3 flex-wrap">
@@ -653,13 +707,13 @@ export default function ExnessPage() {
           )}
           {selectedId && (
             <div className="flex flex-col items-end gap-0.5">
-              <BotToggle copierId={selectedId} active={currentActive} onToggle={handleToggle} toggling={toggling} />
+              <BotToggle copierId={selectedId} active={currentActive}
+                onRequestToggle={requestToggle} toggling={toggling} />
             </div>
           )}
         </div>
       </header>
 
-      {/* MAIN */}
       <main className="flex-1 min-h-0 flex flex-col p-4 sm:p-5 gap-4">
         {!selectedId ? (
           <div className="flex-1 flex items-center justify-center">
@@ -692,7 +746,7 @@ export default function ExnessPage() {
                     )}
                   </div>
                 ) : (
-                  <table className="w-full text-sm min-w-[480px]">
+                  <table className="w-full text-sm min-w-[420px]">
                     <TableHead cols={OPEN_COLS} />
                     <tbody>
                       {openPositions.map(pos => (
@@ -710,7 +764,6 @@ export default function ExnessPage() {
               <ColHeader title="Histories" totalLot={closedLot} totalCount={closedPositions.length}
                 totalPnL={closedPnL} accent="bg-amber-500"
                 pnlPulseKey={closedPnlPulse.key} pnlDir={closedPnlPulse.dir}>
-                {/* DateRangePicker inline trong header */}
                 <DateRangePicker startKey={dateStart} endKey={dateEnd} onChange={handleDateChange} />
               </ColHeader>
               <div ref={closedScrollRef} className="flex-1 overflow-auto min-h-0">
@@ -719,7 +772,7 @@ export default function ExnessPage() {
                     {loading ? 'Đang tải...' : 'Không có lệnh nào trong khoảng thời gian này'}
                   </div>
                 ) : (
-                  <table className="w-full text-sm min-w-[520px]">
+                  <table className="w-full text-sm min-w-[420px]">
                     <TableHead cols={CLOSED_COLS} />
                     <tbody>
                       {closedPositions.map(t => (
@@ -728,13 +781,30 @@ export default function ExnessPage() {
                     </tbody>
                   </table>
                 )}
-
               </div>
             </div>
 
           </div>
         )}
       </main>
+
+      {/* CONFIRM TOGGLE MODAL */}
+      {confirmToggle && (
+        <ConfirmModal
+          open
+          title={confirmToggle.nextActive ? 'Bật copy-bot' : 'Tắt copy-bot'}
+          message={
+            confirmToggle.nextActive
+              ? `Bật copy-bot cho tài khoản "${copierLabel(confirmToggle.copierId)}"? Bot sẽ bắt đầu sao chép lệnh từ tín hiệu.`
+              : `Tắt copy-bot cho tài khoản "${copierLabel(confirmToggle.copierId)}"? Các lệnh đang mở sẽ bị đóng toàn bộ, và bot sẽ ngừng mở lệnh mới.`
+          }
+          confirmLabel={confirmToggle.nextActive ? 'Bật' : 'Tắt'}
+          danger={!confirmToggle.nextActive}
+          busy={toggling}
+          onConfirm={doToggle}
+          onCancel={() => setConfirmToggle(null)}
+        />
+      )}
 
       <style>{`
         @keyframes rowEnterOpen   { 0%{opacity:0;transform:translateX(-16px);background:rgba(99,102,241,.08)} 70%{background:rgba(99,102,241,.04)} 100%{opacity:1;transform:translateX(0);background:transparent} }

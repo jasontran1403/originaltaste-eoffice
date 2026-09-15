@@ -53,9 +53,7 @@ const fmtDateTime = (iso) => {
 }
 
 /**
- * Tính net profit: ưu tiên field "profit" từ server nếu nó
- * đã là net (BE đôi khi gộp sẵn). Nếu commission/swap/fee đều 0
- * thì profit = dealProfit. Không bao giờ trả undefined/null.
+ * Net profit của lệnh đã đóng: profit + commission + swap + fee.
  */
 const calcNet = (t) => {
   const p    = Number(t.profit     || 0)
@@ -64,6 +62,11 @@ const calcNet = (t) => {
   const fee  = Number(t.fee        || 0)
   return p + comm + swap + fee
 }
+
+/** P/L floating lệnh đang mở — MQ5 gửi POSITION_PROFIT + SWAP vào field profit */
+const calcFloat = (t) => Number(t.profit || 0)
+
+const profitSign = (v) => v > 0.001 ? '+' : ''
 
 const profitClass = (v) =>
   v > 0.001 ? 'text-emerald-600' : v < -0.001 ? 'text-rose-500' : 'text-gray-400'
@@ -107,7 +110,7 @@ function AnimatedValue({ value, className = '', pulseKey, direction }) {
 /* ================================================================
    COLUMN HEADER
    ================================================================ */
-function ColHeader({ title, count, totalLot, totalPnL, accent }) {
+function ColHeader({ title, count, totalLot, totalPnL, accent, pnlPulseKey, pnlDir }) {
   const pc = totalPnL > 0.001 ? 'text-emerald-600'
     : totalPnL < -0.001 ? 'text-rose-500' : 'text-gray-400'
   return (
@@ -120,9 +123,14 @@ function ColHeader({ title, count, totalLot, totalPnL, accent }) {
       <div className="flex items-center gap-4 text-xs tabular-nums">
         <span className="text-gray-500">Lot: <b className="text-gray-700">{fmtVN(totalLot, 2)}</b></span>
         {totalPnL !== null && (
-          <span className="text-gray-500">P/L: <b className={pc}>
-            {totalPnL >= 0 ? '+' : ''}{fmtVN(totalPnL)}
-          </b></span>
+          <span className="text-gray-500">P/L:{' '}
+            <AnimatedValue
+              value={`${profitSign(totalPnL)}${fmtVN(totalPnL)}`}
+              className={`text-xs ${pc}`}
+              pulseKey={pnlPulseKey}
+              direction={pnlDir}
+            />
+          </span>
         )}
       </div>
     </div>
@@ -149,7 +157,7 @@ function OpenRow({ trade: t, isNew, isLeaving }) {
       <td className="px-3 py-2.5 text-xs text-gray-700 font-medium">{t.symbol || '—'}</td>
       <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-700">{fmtVN(t.volume, 2)}</td>
       <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-600">{fmtPrice(t.openPrice)}</td>
-      <td className="px-3 py-2.5 text-xs text-gray-400 tabular-nums text-right">{fmtTime(t.openTime)}</td>
+      <td className="px-3 py-2.5 text-xs text-gray-400 tabular-nums">{fmtTime(t.openTime)}</td>
     </tr>
   )
 }
@@ -179,7 +187,7 @@ function ClosedRow({ trade: t, isNew }) {
       <td className={`px-3 py-2.5 text-right text-xs tabular-nums font-bold ${profitClass(net)}`}>
         {net >= 0 ? '+' : ''}{fmtVN(net)}
       </td>
-      <td className="px-3 py-2.5 text-xs text-gray-400 tabular-nums text-right">{fmtTime(t.closeTime)}</td>
+      <td className="px-3 py-2.5 text-xs text-gray-400 tabular-nums">{fmtTime(t.closeTime)}</td>
     </tr>
   )
 }
@@ -225,6 +233,8 @@ export default function ExnessPage() {
   const [newOpenIds, setNewOpenIds]           = useState(new Set())
   const [newClosedIds, setNewClosedIds]       = useState(new Set())
   const [leavingIds, setLeavingIds]           = useState(new Set())
+  // Map: positionTicket → { profit, currentPrice } — cập nhật realtime từ report
+  const [floatMap, setFloatMap]               = useState({})
   const clientRef = useRef(null)
 
   /* ── helpers ─────────────────────────────────────────────────── */
@@ -295,6 +305,16 @@ export default function ExnessPage() {
         client.subscribe(`/topic/mt5-exness/${selectedId}`, (msg) => {
           try {
             const payload = JSON.parse(msg.body)
+
+            if (payload.type === 'POSITIONS_UPDATE') {
+              // Cập nhật floating P/L của các lệnh đang mở realtime
+              const map = {}
+              for (const p of (payload.positions || [])) {
+                map[p.positionTicket] = { profit: p.profit, currentPrice: p.currentPrice }
+              }
+              setFloatMap(map)
+              return
+            }
 
             if (payload.type === 'STATE_CHANGE') {
               if (payload.copierId === selectedId) {
@@ -372,12 +392,19 @@ export default function ExnessPage() {
 
   const openLot   = useMemo(() =>
     openPositions.reduce((s, t) => s + (t.volume || 0), 0), [openPositions])
+  // Total floating P/L — ưu tiên realtime floatMap, fallback t.profit
+  const openPnL   = useMemo(() =>
+    openPositions.reduce((s, t) => {
+      const live = floatMap[t.positionTicket]
+      return s + (live ? Number(live.profit || 0) : calcFloat(t))
+    }, 0), [openPositions, floatMap])
   const closedLot = useMemo(() =>
     closedPositions.reduce((s, t) => s + (t.volume || 0), 0), [closedPositions])
   const closedPnL = useMemo(() =>
     closedPositions.reduce((s, t) => s + calcNet(t), 0), [closedPositions])
 
-  const pnlPulse = useValuePulse(closedPnL)
+  const pnlPulse    = useValuePulse(closedPnL)
+  const openPnlPulse = useValuePulse(openPnL)
 
   /* ── state badge ─────────────────────────────────────────────── */
 
@@ -487,8 +514,10 @@ export default function ExnessPage() {
                 title="Đang mở"
                 count={openPositions.length}
                 totalLot={openLot}
-                totalPnL={null}
+                totalPnL={openPnL}
                 accent="bg-blue-500"
+                pnlPulseKey={openPnlPulse.key}
+                pnlDir={openPnlPulse.dir}
               />
               <div className="flex-1 overflow-auto">
                 {openPositions.length === 0 ? (
@@ -496,10 +525,10 @@ export default function ExnessPage() {
                     Không có lệnh nào đang mở
                   </div>
                 ) : (
-                  <table className="w-full text-sm min-w-[380px]">
+                  <table className="w-full text-sm min-w-[480px]">
                     <thead>
                       <tr className="border-b border-gray-100 bg-gray-50/70">
-                        {['Ticket', 'Side', 'Symbol', 'Lot', 'Open', 'Giờ mở'].map((h, i) => (
+                        {['Ticket', 'Side', 'Symbol', 'Lot', 'Open', 'P/L', 'Giờ mở'].map((h, i) => (
                           <th key={h} className={`px-3 py-2 text-[10px] font-semibold text-gray-400
                             uppercase tracking-wider whitespace-nowrap
                             ${i >= 3 ? 'text-right' : 'text-left'}`}>{h}</th>
@@ -513,6 +542,7 @@ export default function ExnessPage() {
                           trade={t}
                           isNew={newOpenIds.has(t.positionTicket)}
                           isLeaving={leavingIds.has(t.positionTicket)}
+                          liveProfit={floatMap[t.positionTicket]?.profit}
                         />
                       ))}
                     </tbody>
@@ -529,6 +559,8 @@ export default function ExnessPage() {
                 totalLot={closedLot}
                 totalPnL={closedPnL}
                 accent="bg-amber-500"
+                pnlPulseKey={pnlPulse.key}
+                pnlDir={pnlPulse.dir}
               />
               <div className="flex-1 overflow-auto">
                 {closedPositions.length === 0 ? (
@@ -559,19 +591,7 @@ export default function ExnessPage() {
                 )}
               </div>
 
-              {/* Footer tổng P/L */}
-              {closedPositions.length > 0 && (
-                <div className="px-4 py-3 border-t border-gray-100 bg-gray-50/60
-                               flex items-center justify-end gap-3">
-                  <span className="text-xs text-gray-400">Tổng P/L</span>
-                  <AnimatedValue
-                    value={`${closedPnL >= 0 ? '+' : ''}${fmtVN(closedPnL)}`}
-                    className={`text-base ${closedPnL >= 0.001 ? 'text-emerald-600' : closedPnL < -0.001 ? 'text-rose-500' : 'text-gray-400'}`}
-                    pulseKey={pnlPulse.key}
-                    direction={pnlPulse.dir}
-                  />
-                </div>
-              )}
+
             </div>
           </div>
         )}

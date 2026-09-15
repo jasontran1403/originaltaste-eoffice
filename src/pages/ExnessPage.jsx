@@ -3,6 +3,7 @@ import { Client } from '@stomp/stompjs'
 import SockJS from 'sockjs-client'
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:9009'
+const GMT7_OFFSET_MS = 7 * 60 * 60 * 1000
 
 /* ================================================================
    HELPERS
@@ -14,22 +15,58 @@ const fmtVN = (v, d = 2) => {
     minimumFractionDigits: d, maximumFractionDigits: d,
   }).format(Number(v))
 }
+
 const fmtPrice = (v) => {
   if (v == null || isNaN(Number(v))) return '—'
   const s = String(v)
   const dec = s.includes('.') ? s.split('.')[1].length : 2
   return fmtVN(v, Math.min(dec, 5))
 }
-const profitClass = (v) =>
-  v > 0 ? 'text-emerald-400' : v < 0 ? 'text-rose-400' : 'text-slate-500'
+
+/**
+ * Parse ISO string từ server (UTC) → hiển thị theo GMT+7.
+ * Server lưu LocalDateTime (không có timezone) → coi là UTC khi parse.
+ * "2025-01-01T02:41:30" hoặc "2025-01-01 02:41:30" → 09:41:30
+ */
+const toGmt7Date = (iso) => {
+  if (!iso) return null
+  try {
+    // Chuẩn hóa: thay space → T, đảm bảo có Z (UTC)
+    const normalized = String(iso).replace(' ', 'T').replace(/(\.\d+)?$/, '') + 'Z'
+    const d = new Date(normalized)
+    if (isNaN(d.getTime())) return null
+    return new Date(d.getTime() + GMT7_OFFSET_MS)
+  } catch { return null }
+}
 
 const fmtTime = (iso) => {
-  if (!iso) return '—'
-  try {
-    const m = String(iso).match(/(\d{2}):(\d{2}):(\d{2})/)
-    return m ? `${m[1]}:${m[2]}:${m[3]}` : String(iso).substring(11, 19)
-  } catch { return '—' }
+  const d = toGmt7Date(iso)
+  if (!d) return '—'
+  return d.toISOString().substring(11, 19)   // HH:mm:ss
 }
+
+const fmtDateTime = (iso) => {
+  const d = toGmt7Date(iso)
+  if (!d) return '—'
+  const s = d.toISOString()
+  return s.substring(0, 10) + ' ' + s.substring(11, 19)
+}
+
+/**
+ * Tính net profit: ưu tiên field "profit" từ server nếu nó
+ * đã là net (BE đôi khi gộp sẵn). Nếu commission/swap/fee đều 0
+ * thì profit = dealProfit. Không bao giờ trả undefined/null.
+ */
+const calcNet = (t) => {
+  const p    = Number(t.profit     || 0)
+  const comm = Number(t.commission || 0)
+  const swap = Number(t.swap       || 0)
+  const fee  = Number(t.fee        || 0)
+  return p + comm + swap + fee
+}
+
+const profitClass = (v) =>
+  v > 0.001 ? 'text-emerald-600' : v < -0.001 ? 'text-rose-500' : 'text-gray-400'
 
 /* ================================================================
    VALUE PULSE HOOK
@@ -71,18 +108,19 @@ function AnimatedValue({ value, className = '', pulseKey, direction }) {
    COLUMN HEADER
    ================================================================ */
 function ColHeader({ title, count, totalLot, totalPnL, accent }) {
-  const pc = totalPnL > 0 ? 'text-emerald-400' : totalPnL < 0 ? 'text-rose-400' : 'text-slate-500'
+  const pc = totalPnL > 0.001 ? 'text-emerald-600'
+    : totalPnL < -0.001 ? 'text-rose-500' : 'text-gray-400'
   return (
-    <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between flex-wrap gap-2">
+    <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between flex-wrap gap-2 bg-gray-50">
       <div className="flex items-center gap-2">
         <span className={`w-2 h-2 rounded-full flex-shrink-0 ${accent}`} />
-        <span className="text-sm font-semibold text-slate-200">{title}</span>
-        <span className="text-xs text-slate-500 tabular-nums">({count})</span>
+        <span className="text-sm font-semibold text-gray-800">{title}</span>
+        <span className="text-xs text-gray-400 tabular-nums">({count})</span>
       </div>
       <div className="flex items-center gap-4 text-xs tabular-nums">
-        <span className="text-slate-500">Lot: <b className="text-slate-300">{fmtVN(totalLot, 2)}</b></span>
+        <span className="text-gray-500">Lot: <b className="text-gray-700">{fmtVN(totalLot, 2)}</b></span>
         {totalPnL !== null && (
-          <span className="text-slate-500">P/L: <b className={pc}>
+          <span className="text-gray-500">P/L: <b className={pc}>
             {totalPnL >= 0 ? '+' : ''}{fmtVN(totalPnL)}
           </b></span>
         )}
@@ -97,19 +135,21 @@ function ColHeader({ title, count, totalLot, totalPnL, accent }) {
 function OpenRow({ trade: t, isNew, isLeaving }) {
   const dir = t.direction === 'BUY'
   return (
-    <tr className={`border-b border-slate-800/60 transition-all duration-300
+    <tr className={`border-b border-gray-100 transition-all duration-300
       ${isNew     ? 'row-enter-open' : ''}
-      ${isLeaving ? 'row-leave'      : 'hover:bg-slate-800/40'}`}>
-      <td className="px-3 py-2 text-[11px] text-slate-500 tabular-nums"># {t.positionTicket}</td>
-      <td className="px-3 py-2">
-        <span className={`text-xs font-bold ${dir ? 'text-emerald-400' : 'text-rose-400'}`}>
+      ${isLeaving ? 'row-leave'      : 'hover:bg-blue-50/40'}`}>
+      <td className="px-3 py-2.5 text-[11px] text-gray-400 tabular-nums font-mono">
+        #{t.positionTicket}
+      </td>
+      <td className="px-3 py-2.5">
+        <span className={`text-xs font-bold ${dir ? 'text-emerald-600' : 'text-rose-500'}`}>
           {t.direction}
         </span>
       </td>
-      <td className="px-3 py-2 text-xs text-slate-300 font-medium">{t.symbol || '—'}</td>
-      <td className="px-3 py-2 text-right text-xs tabular-nums text-slate-300">{fmtVN(t.volume, 2)}</td>
-      <td className="px-3 py-2 text-right text-xs tabular-nums text-slate-400">{fmtPrice(t.openPrice)}</td>
-      <td className="px-3 py-2 text-xs text-slate-600 tabular-nums text-right">{fmtTime(t.openTime)}</td>
+      <td className="px-3 py-2.5 text-xs text-gray-700 font-medium">{t.symbol || '—'}</td>
+      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-700">{fmtVN(t.volume, 2)}</td>
+      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-600">{fmtPrice(t.openPrice)}</td>
+      <td className="px-3 py-2.5 text-xs text-gray-400 tabular-nums text-right">{fmtTime(t.openTime)}</td>
     </tr>
   )
 }
@@ -119,32 +159,33 @@ function OpenRow({ trade: t, isNew, isLeaving }) {
    ================================================================ */
 function ClosedRow({ trade: t, isNew }) {
   const dir = t.direction === 'BUY'
-  const net = (t.profit || 0) + (t.commission || 0) + (t.swap || 0) + (t.fee || 0)
+  const net = calcNet(t)
   return (
-    <tr className={`border-b border-slate-800/60 transition-all duration-300
+    <tr className={`border-b border-gray-100 transition-all duration-300
       ${isNew ? 'row-enter-closed' : ''}
-      hover:bg-slate-800/40`}>
-      <td className="px-3 py-2 text-[11px] text-slate-500 tabular-nums"># {t.positionTicket}</td>
-      <td className="px-3 py-2">
-        <span className={`text-xs font-bold ${dir ? 'text-emerald-400' : 'text-rose-400'}`}>
+      hover:bg-amber-50/40`}>
+      <td className="px-3 py-2.5 text-[11px] text-gray-400 tabular-nums font-mono">
+        #{t.positionTicket}
+      </td>
+      <td className="px-3 py-2.5">
+        <span className={`text-xs font-bold ${dir ? 'text-emerald-600' : 'text-rose-500'}`}>
           {t.direction}
         </span>
       </td>
-      <td className="px-3 py-2 text-xs text-slate-300 font-medium">{t.symbol || '—'}</td>
-      <td className="px-3 py-2 text-right text-xs tabular-nums text-slate-300">{fmtVN(t.volume, 2)}</td>
-      <td className="px-3 py-2 text-right text-xs tabular-nums text-slate-500">{fmtPrice(t.openPrice)}</td>
-      <td className="px-3 py-2 text-right text-xs tabular-nums text-slate-500">{fmtPrice(t.closePrice)}</td>
-      <td className={`px-3 py-2 text-right text-xs tabular-nums font-bold ${profitClass(net)}`}>
+      <td className="px-3 py-2.5 text-xs text-gray-700 font-medium">{t.symbol || '—'}</td>
+      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-700">{fmtVN(t.volume, 2)}</td>
+      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-500">{fmtPrice(t.openPrice)}</td>
+      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-500">{fmtPrice(t.closePrice)}</td>
+      <td className={`px-3 py-2.5 text-right text-xs tabular-nums font-bold ${profitClass(net)}`}>
         {net >= 0 ? '+' : ''}{fmtVN(net)}
       </td>
-      <td className="px-3 py-2 text-xs text-slate-600 tabular-nums">{fmtTime(t.closeTime)}</td>
+      <td className="px-3 py-2.5 text-xs text-gray-400 tabular-nums text-right">{fmtTime(t.closeTime)}</td>
     </tr>
   )
 }
 
 /* ================================================================
    BOT TOGGLE BUTTON
-   — chỉ thay đổi state của selectedId, không ảnh hưởng copier khác
    ================================================================ */
 function BotToggle({ copierId, active, onToggle, toggling }) {
   return (
@@ -153,16 +194,16 @@ function BotToggle({ copierId, active, onToggle, toggling }) {
       disabled={toggling || !copierId}
       title={`Tài khoản: ${copierId} — click để ${active ? 'tắt' : 'bật'}`}
       className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-semibold
-        transition-all duration-200 shadow select-none
+        transition-all duration-200 shadow-sm select-none border
         ${active
-          ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-          : 'bg-slate-700 hover:bg-slate-600 text-slate-300'}
+          ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-500'
+          : 'bg-white hover:bg-gray-50 text-gray-600 border-gray-300'}
         ${(toggling || !copierId) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
     >
-      <span className={`w-2 h-2 rounded-full transition-colors
-        ${active ? 'bg-white animate-pulse' : 'bg-slate-500'}`} />
+      <span className={`w-2 h-2 rounded-full flex-shrink-0 transition-colors
+        ${active ? 'bg-white animate-pulse' : 'bg-gray-400'}`} />
       {toggling ? 'Đang xử lý...' : active ? 'Đang chạy' : 'Đã tắt'}
-      <span className="text-[10px] opacity-50 hidden sm:inline">
+      <span className="text-[10px] opacity-60 hidden sm:inline">
         ({active ? 'click tắt' : 'click bật'})
       </span>
     </button>
@@ -173,27 +214,20 @@ function BotToggle({ copierId, active, onToggle, toggling }) {
    MAIN PAGE
    ================================================================ */
 export default function ExnessPage() {
-  const [copierIds, setCopierIds]         = useState([])
-  const [selectedId, setSelectedId]       = useState(null)
-
-  const [openPositions, setOpenPositions] = useState([])
+  const [copierIds, setCopierIds]             = useState([])
+  const [selectedId, setSelectedId]           = useState(null)
+  const [openPositions, setOpenPositions]     = useState([])
   const [closedPositions, setClosedPositions] = useState([])
-  const [loading, setLoading]             = useState(false)
-
-  // State per-copier: { [copierId]: { active, updatedAt, changedBy } }
-  // Dùng Map để tránh re-render toàn bộ khi copier khác đổi
-  const [stateMap, setStateMap]           = useState({})
-
-  const [connected, setConnected]         = useState(false)
-  const [toggling, setToggling]           = useState(false)
-
-  const [newOpenIds, setNewOpenIds]       = useState(new Set())
-  const [newClosedIds, setNewClosedIds]   = useState(new Set())
-  const [leavingIds, setLeavingIds]       = useState(new Set())
-
+  const [loading, setLoading]                 = useState(false)
+  const [stateMap, setStateMap]               = useState({})
+  const [connected, setConnected]             = useState(false)
+  const [toggling, setToggling]               = useState(false)
+  const [newOpenIds, setNewOpenIds]           = useState(new Set())
+  const [newClosedIds, setNewClosedIds]       = useState(new Set())
+  const [leavingIds, setLeavingIds]           = useState(new Set())
   const clientRef = useRef(null)
 
-  /* ── helpers ────────────────────────────────────────────────── */
+  /* ── helpers ─────────────────────────────────────────────────── */
 
   const applyState = useCallback((stateObj) => {
     if (!stateObj || !stateObj.copierId) return
@@ -207,7 +241,7 @@ export default function ExnessPage() {
     }))
   }, [])
 
-  const currentActive = selectedId ? (stateMap[selectedId]?.active ?? false) : false
+  const currentActive = selectedId ? (stateMap[selectedId]?.active ?? true) : true
 
   /* ── fetch copier ids ───────────────────────────────────────── */
 
@@ -222,7 +256,7 @@ export default function ExnessPage() {
       .catch(console.error)
   }, [])
 
-  /* ── fetch history (gộp state trong response) ──────────────── */
+  /* ── fetch history (gộp state) ──────────────────────────────── */
 
   const fetchHistory = useCallback(async (copierId) => {
     if (!copierId) return
@@ -233,9 +267,8 @@ export default function ExnessPage() {
       )
       const d = await r.json()
       if (d.success) {
-        setOpenPositions(d.openPositions   || [])
+        setOpenPositions(d.openPositions    || [])
         setClosedPositions(d.closedPositions || [])
-        // state đã gộp trong response
         if (d.state) applyState(d.state)
       }
     } catch (e) { console.error(e) }
@@ -247,11 +280,10 @@ export default function ExnessPage() {
     fetchHistory(selectedId)
   }, [selectedId, fetchHistory])
 
-  /* ── WebSocket — subscribe per-copier topic ─────────────────── */
+  /* ── WebSocket ──────────────────────────────────────────────── */
 
   useEffect(() => {
     if (!selectedId) return
-
     const wsUrl = BASE.replace(/^http/, 'http') + '/ws'
     const client = new Client({
       webSocketFactory: () => new SockJS(wsUrl),
@@ -260,18 +292,11 @@ export default function ExnessPage() {
       heartbeatOutgoing: 10000,
       onConnect: () => {
         setConnected(true)
-
-        // ── subscribe ĐÚNG topic của copier đang xem ──────────
-        // Khi user đổi selectedId, effect này chạy lại,
-        // client cũ bị deactivate → không có rò rỉ sub chéo copier
         client.subscribe(`/topic/mt5-exness/${selectedId}`, (msg) => {
           try {
             const payload = JSON.parse(msg.body)
 
-            /* ── STATE_CHANGE từ EA (trigger LIMIT/STOP) hoặc copier khác push ── */
             if (payload.type === 'STATE_CHANGE') {
-              // Chỉ áp dụng nếu đúng copierId trong message
-              // (server đã route đúng topic nhưng double-check thêm)
               if (payload.copierId === selectedId) {
                 applyState({
                   copierId:  payload.copierId,
@@ -283,7 +308,6 @@ export default function ExnessPage() {
               return
             }
 
-            /* ── TRADE_EVENT ───────────────────────────────────── */
             if (payload.type === 'TRADE_EVENT') {
               const trade = payload.trade
               const event = payload.event
@@ -291,8 +315,7 @@ export default function ExnessPage() {
               if (event === 'OPEN') {
                 setOpenPositions(prev =>
                   prev.some(t => t.positionTicket === trade.positionTicket)
-                    ? prev
-                    : [trade, ...prev]
+                    ? prev : [trade, ...prev]
                 )
                 const tk = trade.positionTicket
                 setNewOpenIds(prev => new Set(prev).add(tk))
@@ -300,14 +323,11 @@ export default function ExnessPage() {
                   const n = new Set(prev); n.delete(tk); return n
                 }), 800)
               } else {
-                // CLOSE → animate ra khỏi cột mở, rồi xuất hiện ở cột đóng
                 const tk = trade.positionTicket
                 setLeavingIds(prev => new Set(prev).add(tk))
-
                 setTimeout(() => {
                   setOpenPositions(prev => prev.filter(t => t.positionTicket !== tk))
                   setLeavingIds(prev => { const n = new Set(prev); n.delete(tk); return n })
-
                   setClosedPositions(prev => {
                     const idx = prev.findIndex(t => t.positionTicket === tk)
                     if (idx !== -1) { const next = [...prev]; next[idx] = trade; return next }
@@ -324,17 +344,14 @@ export default function ExnessPage() {
         })
       },
       onDisconnect: () => setConnected(false),
-      onStompError: () => setConnected(false),
+      onStompError:  () => setConnected(false),
     })
-
     client.activate()
     clientRef.current = client
-
-    // cleanup khi selectedId đổi hoặc unmount
     return () => { client.deactivate() }
   }, [selectedId, applyState])
 
-  /* ── toggle bot (chỉ tác động selectedId) ───────────────────── */
+  /* ── toggle ─────────────────────────────────────────────────── */
 
   const handleToggle = useCallback(async (copierId, active) => {
     if (!copierId || toggling) return
@@ -343,11 +360,9 @@ export default function ExnessPage() {
       const r = await fetch(`${BASE}/api/public/mt5/copier/state`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        // changedBy = "UI" để phân biệt với EA trigger
         body: JSON.stringify({ copierId, active, changedBy: 'UI' }),
       })
       const d = await r.json()
-      // Server trả về state mới của đúng copierId đó
       applyState(d)
     } catch (e) { console.error(e) }
     finally { setToggling(false) }
@@ -360,47 +375,47 @@ export default function ExnessPage() {
   const closedLot = useMemo(() =>
     closedPositions.reduce((s, t) => s + (t.volume || 0), 0), [closedPositions])
   const closedPnL = useMemo(() =>
-    closedPositions.reduce((s, t) =>
-      s + (t.profit||0) + (t.commission||0) + (t.swap||0) + (t.fee||0), 0),
-    [closedPositions])
+    closedPositions.reduce((s, t) => s + calcNet(t), 0), [closedPositions])
 
   const pnlPulse = useValuePulse(closedPnL)
 
-  /* ── state badge ──────────────────────────────────────────────── */
+  /* ── state badge ─────────────────────────────────────────────── */
+
   const stateInfo = selectedId ? stateMap[selectedId] : null
   const stateAge  = stateInfo?.updatedAt
     ? (() => {
         try {
           const diff = Math.floor((Date.now() - new Date(stateInfo.updatedAt).getTime()) / 1000)
-          if (diff < 60) return `${diff}s trước`
-          if (diff < 3600) return `${Math.floor(diff/60)}m trước`
-          return `${Math.floor(diff/3600)}h trước`
+          if (diff < 60)   return `${diff}s trước`
+          if (diff < 3600) return `${Math.floor(diff / 60)}m trước`
+          return `${Math.floor(diff / 3600)}h trước`
         } catch { return '' }
       })()
     : ''
 
   /* ── render ─────────────────────────────────────────────────── */
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-200 flex flex-col">
+    <div className="min-h-screen bg-gray-50 text-gray-900 flex flex-col">
 
       {/* HEADER */}
-      <header className="bg-slate-900 border-b border-slate-800 px-4 sm:px-6 py-3
-                         flex items-center justify-between gap-3 flex-wrap sticky top-0 z-30">
+      <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3
+                         flex items-center justify-between gap-3 flex-wrap sticky top-0 z-30 shadow-sm">
         <div className="flex items-center gap-3 flex-wrap">
-          {/* Logo */}
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 to-blue-600
-                          flex items-center justify-center shadow flex-shrink-0">
+                          flex items-center justify-center shadow-sm flex-shrink-0">
             <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24"
                  stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 17l4-8 4 4 4-7 4 8" />
             </svg>
           </div>
-          <span className="text-base font-bold tracking-tight">Copier Trade</span>
-          {/* WS indicator */}
+          <span className="text-base font-bold tracking-tight text-gray-900">Copier Trade</span>
           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold
-            ${connected ? 'bg-emerald-900/60 text-emerald-400' : 'bg-slate-800 text-slate-500'}`}>
+            ${connected
+              ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+              : 'bg-gray-100 text-gray-400 border border-gray-200'}`}>
             <span className={`w-1.5 h-1.5 rounded-full
-              ${connected ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+              ${connected ? 'bg-emerald-500 animate-pulse' : 'bg-gray-300'}`} />
             {connected ? 'Live' : 'Offline'}
           </span>
         </div>
@@ -409,20 +424,20 @@ export default function ExnessPage() {
           {/* Copier selector */}
           {copierIds.length > 0 && (
             <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500 hidden sm:inline">Tài khoản</span>
+              <span className="text-xs text-gray-500 hidden sm:inline">Tài khoản</span>
               <div className="relative">
                 <select
                   value={selectedId || ''}
                   onChange={e => setSelectedId(e.target.value)}
-                  className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 pr-8
-                             text-sm text-slate-200 focus:outline-none focus:border-violet-500
-                             cursor-pointer appearance-none"
+                  className="bg-white border border-gray-300 rounded-lg px-3 py-1.5 pr-8
+                             text-sm text-gray-700 focus:outline-none focus:border-violet-500
+                             cursor-pointer appearance-none shadow-sm"
                 >
                   {copierIds.map(id => (
                     <option key={id} value={id}>{id}</option>
                   ))}
                 </select>
-                <svg className="pointer-events-none absolute right-2 top-2.5 w-3 h-3 text-slate-500"
+                <svg className="pointer-events-none absolute right-2 top-2.5 w-3 h-3 text-gray-400"
                      fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
@@ -430,7 +445,7 @@ export default function ExnessPage() {
             </div>
           )}
 
-          {/* Bot toggle — chỉ tác động selectedId */}
+          {/* Bot toggle */}
           {selectedId && (
             <div className="flex flex-col items-end gap-0.5">
               <BotToggle
@@ -440,7 +455,7 @@ export default function ExnessPage() {
                 toggling={toggling}
               />
               {stateAge && (
-                <span className="text-[10px] text-slate-600 pr-1">
+                <span className="text-[10px] text-gray-400 pr-1">
                   {stateInfo?.changedBy ? `${stateInfo.changedBy} · ` : ''}{stateAge}
                 </span>
               )}
@@ -453,7 +468,7 @@ export default function ExnessPage() {
       <main className="flex-1 flex flex-col p-4 sm:p-5 gap-4 min-h-0">
         {!selectedId ? (
           <div className="flex-1 flex items-center justify-center">
-            <p className="text-slate-600 text-sm">
+            <p className="text-gray-400 text-sm">
               {copierIds.length === 0
                 ? 'Chưa có tài khoản nào kết nối.'
                 : 'Chọn tài khoản để xem lệnh.'}
@@ -466,8 +481,8 @@ export default function ExnessPage() {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1 min-h-0">
 
-            {/* ── CỘT TRÁI: ĐANG MỞ ── */}
-            <div className="bg-slate-900 rounded-xl border border-slate-800 flex flex-col overflow-hidden">
+            {/* CỘT TRÁI: ĐANG MỞ */}
+            <div className="bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden shadow-sm">
               <ColHeader
                 title="Đang mở"
                 count={openPositions.length}
@@ -477,15 +492,15 @@ export default function ExnessPage() {
               />
               <div className="flex-1 overflow-auto">
                 {openPositions.length === 0 ? (
-                  <div className="py-16 text-center text-slate-700 text-sm select-none">
+                  <div className="py-16 text-center text-gray-300 text-sm select-none">
                     Không có lệnh nào đang mở
                   </div>
                 ) : (
                   <table className="w-full text-sm min-w-[380px]">
                     <thead>
-                      <tr className="border-b border-slate-800">
+                      <tr className="border-b border-gray-100 bg-gray-50/70">
                         {['Ticket', 'Side', 'Symbol', 'Lot', 'Open', 'Giờ mở'].map((h, i) => (
-                          <th key={h} className={`px-3 py-2 text-[10px] font-semibold text-slate-600
+                          <th key={h} className={`px-3 py-2 text-[10px] font-semibold text-gray-400
                             uppercase tracking-wider whitespace-nowrap
                             ${i >= 3 ? 'text-right' : 'text-left'}`}>{h}</th>
                         ))}
@@ -506,8 +521,8 @@ export default function ExnessPage() {
               </div>
             </div>
 
-            {/* ── CỘT PHẢI: ĐÃ ĐÓNG ── */}
-            <div className="bg-slate-900 rounded-xl border border-slate-800 flex flex-col overflow-hidden">
+            {/* CỘT PHẢI: ĐÃ ĐÓNG */}
+            <div className="bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden shadow-sm">
               <ColHeader
                 title="Đã đóng"
                 count={closedPositions.length}
@@ -517,15 +532,15 @@ export default function ExnessPage() {
               />
               <div className="flex-1 overflow-auto">
                 {closedPositions.length === 0 ? (
-                  <div className="py-16 text-center text-slate-700 text-sm select-none">
+                  <div className="py-16 text-center text-gray-300 text-sm select-none">
                     Chưa có lệnh đóng nào
                   </div>
                 ) : (
                   <table className="w-full text-sm min-w-[520px]">
                     <thead>
-                      <tr className="border-b border-slate-800">
+                      <tr className="border-b border-gray-100 bg-gray-50/70">
                         {['Ticket', 'Side', 'Symbol', 'Lot', 'Open', 'Close', 'P/L', 'Giờ đóng'].map((h, i) => (
-                          <th key={h} className={`px-3 py-2 text-[10px] font-semibold text-slate-600
+                          <th key={h} className={`px-3 py-2 text-[10px] font-semibold text-gray-400
                             uppercase tracking-wider whitespace-nowrap
                             ${i >= 3 ? 'text-right' : 'text-left'}`}>{h}</th>
                         ))}
@@ -546,11 +561,12 @@ export default function ExnessPage() {
 
               {/* Footer tổng P/L */}
               {closedPositions.length > 0 && (
-                <div className="px-4 py-3 border-t border-slate-800 flex items-center justify-end gap-3">
-                  <span className="text-xs text-slate-600">Tổng P/L</span>
+                <div className="px-4 py-3 border-t border-gray-100 bg-gray-50/60
+                               flex items-center justify-end gap-3">
+                  <span className="text-xs text-gray-400">Tổng P/L</span>
                   <AnimatedValue
                     value={`${closedPnL >= 0 ? '+' : ''}${fmtVN(closedPnL)}`}
-                    className={`text-base ${closedPnL >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}
+                    className={`text-base ${closedPnL >= 0.001 ? 'text-emerald-600' : closedPnL < -0.001 ? 'text-rose-500' : 'text-gray-400'}`}
                     pulseKey={pnlPulse.key}
                     direction={pnlPulse.dir}
                   />
@@ -564,25 +580,25 @@ export default function ExnessPage() {
       {/* ANIMATIONS */}
       <style>{`
         @keyframes rowEnterOpen {
-          0%   { opacity:0; transform:translateX(-18px); background:rgba(99,102,241,.15); }
-          70%  { background:rgba(99,102,241,.07); }
+          0%   { opacity:0; transform:translateX(-16px); background:rgba(99,102,241,.08); }
+          70%  { background:rgba(99,102,241,.04); }
           100% { opacity:1; transform:translateX(0);     background:transparent; }
         }
         @keyframes rowEnterClosed {
-          0%   { opacity:0; transform:translateX(18px);  background:rgba(251,191,36,.15); }
-          70%  { background:rgba(251,191,36,.07); }
+          0%   { opacity:0; transform:translateX(16px);  background:rgba(245,158,11,.10); }
+          70%  { background:rgba(245,158,11,.05); }
           100% { opacity:1; transform:translateX(0);     background:transparent; }
         }
         @keyframes rowLeave {
-          0%   { opacity:1; transform:translateX(0)  scale(1);    }
-          100% { opacity:0; transform:translateX(22px) scale(.97); }
+          0%   { opacity:1; transform:translateX(0) scale(1);     }
+          100% { opacity:0; transform:translateX(20px) scale(.97); }
         }
         .row-enter-open   { animation: rowEnterOpen   .5s cubic-bezier(.16,1,.3,1) both; }
         .row-enter-closed { animation: rowEnterClosed .5s cubic-bezier(.16,1,.3,1) both; }
         .row-leave        { animation: rowLeave       .4s ease-in both; pointer-events:none; }
 
-        @keyframes valUp   { 0%,100%{color:inherit} 35%{color:#34d399} }
-        @keyframes valDown { 0%,100%{color:inherit} 35%{color:#f87171} }
+        @keyframes valUp   { 0%,100%{color:inherit} 35%{color:#16a34a} }
+        @keyframes valDown { 0%,100%{color:inherit} 35%{color:#dc2626} }
         .val-up    { animation: valUp   .7s ease both; }
         .val-down  { animation: valDown .7s ease both; }
         .val-pulse { animation: valUp   .7s ease both; }

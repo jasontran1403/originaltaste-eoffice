@@ -323,12 +323,14 @@ function TableHead({ cols }) {
         {cols.map((c, i) => {
           const label = typeof c === 'string' ? c : c.label
           const hideOnMobile = typeof c === 'object' && c.hideOnMobile
+          const hideOnDesktop = typeof c === 'object' && c.hideOnDesktop
           return (
             <th key={label}
               className={`px-3 py-2 text-[10px] font-semibold text-gray-400
                 uppercase tracking-wider whitespace-nowrap
                 ${i >= 3 ? 'text-right' : 'text-left'}
-                ${hideOnMobile ? 'hidden md:table-cell' : ''}`}>
+                ${hideOnMobile ? 'hidden md:table-cell' : ''}
+                ${hideOnDesktop ? 'md:hidden' : ''}`}>
               {label}
             </th>
           )
@@ -338,20 +340,31 @@ function TableHead({ cols }) {
   )
 }
 
+
 /* ================================================================
-   SYMBOL + SIDE
+   SYMBOL + SIDE (+ LOT trên mobile)
    ================================================================ */
-function SymbolWithSide({ symbol, direction }) {
+function SymbolCell({ symbol, direction, lot, lotDigits = 2 }) {
   const isBuy = direction === 'BUY'
   return (
-    <div className="flex items-center gap-1">
-      <span className={`text-xs font-bold ${isBuy ? 'text-emerald-600' : 'text-rose-500'}`}>
-        {symbol || '—'}
-      </span>
-      <span className={`text-[10px] font-bold ${isBuy ? 'text-emerald-500' : 'text-rose-400'}`}>
-        {isBuy ? '▲' : '▼'}
-      </span>
-    </div>
+    <>
+      {/* Desktop: chỉ symbol */}
+      <div className="hidden md:block text-xs text-gray-700 font-medium">{symbol || '—'}</div>
+      {/* Mobile: 2 dòng — symbol + mũi tên, dưới là lot */}
+      <div className="md:hidden">
+        <div className="flex items-center gap-1">
+          <span className={`text-xs font-bold ${isBuy ? 'text-emerald-600' : 'text-rose-500'}`}>
+            {symbol || '—'}
+          </span>
+          <span className={`text-[10px] font-bold ${isBuy ? 'text-emerald-500' : 'text-rose-400'}`}>
+            {isBuy ? '▲' : '▼'}
+          </span>
+        </div>
+        <div className="text-[10px] text-gray-400 tabular-nums mt-0.5">
+          {fmtVN(lot, lotDigits)} lot
+        </div>
+      </div>
+    </>
   )
 }
 
@@ -372,13 +385,14 @@ function OpenRow({ pos, isNew, isLeaving }) {
           {pos.direction}
         </span>
       </td>
+      {/* Symbol (desktop) / Symbol + Lot (mobile) */}
       <td className="px-3 py-2.5">
-        <div className="hidden md:block text-xs text-gray-700 font-medium">{pos.symbol || '—'}</div>
-        <div className="md:hidden">
-          <SymbolWithSide symbol={pos.symbol} direction={pos.direction} />
-        </div>
+        <SymbolCell symbol={pos.symbol} direction={pos.direction} lot={pos.volume} />
       </td>
-      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-700">{fmtVN(pos.volume, 2)}</td>
+      {/* Lot — ẩn trên mobile */}
+      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-700 hidden md:table-cell">
+        {fmtVN(pos.volume, 2)}
+      </td>
       <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-600">{fmtPrice(pos.openPrice)}</td>
       <td className={`px-3 py-2.5 text-right text-xs tabular-nums font-semibold ${profitClass(pl)}`}>
         {`${profitSign(pl)}${fmtVN(pl)}`}
@@ -411,13 +425,14 @@ function ClosedRow({ trade: t, isNew }) {
       <td className="px-3 py-2.5 hidden md:table-cell">
         <span className={`text-xs font-bold ${dir ? 'text-emerald-600' : 'text-rose-500'}`}>{t.direction}</span>
       </td>
+      {/* Symbol (desktop) / Symbol + Lot (mobile) */}
       <td className="px-3 py-2.5">
-        <div className="hidden md:block text-xs text-gray-700 font-medium">{t.symbol || '—'}</div>
-        <div className="md:hidden">
-          <SymbolWithSide symbol={t.symbol} direction={t.direction} />
-        </div>
+        <SymbolCell symbol={t.symbol} direction={t.direction} lot={t.volume} />
       </td>
-      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-700">{fmtVN(t.volume, 2)}</td>
+      {/* Lot — ẩn trên mobile */}
+      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-700 hidden md:table-cell">
+        {fmtVN(t.volume, 2)}
+      </td>
       <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-500 hidden md:table-cell">
         {fmtPrice(t.openPrice)}
       </td>
@@ -440,7 +455,7 @@ function ClosedRow({ trade: t, isNew }) {
 }
 
 /* ================================================================
-   BOT TOGGLE — giờ chỉ "request", không gọi API
+   BOT TOGGLE
    ================================================================ */
 function BotToggle({ copierId, active, onRequestToggle, toggling }) {
   return (
@@ -475,7 +490,6 @@ export default function ExnessPage() {
   const [newClosedIds, setNewClosedIds] = useState(new Set())
   const [leavingIds, setLeavingIds] = useState(new Set())
 
-  // Confirm toggle: null hoặc { copierId, nextActive }
   const [confirmToggle, setConfirmToggle] = useState(null)
 
   const initToday = () => {
@@ -606,7 +620,6 @@ export default function ExnessPage() {
     }
   }, [selectedId, applyState, dateStart, dateEnd])
 
-  /* ── Toggle flow: bấm nút → mở confirm → OK mới gọi API ────── */
   const requestToggle = useCallback((copierId, nextActive) => {
     if (!copierId || toggling) return
     setConfirmToggle({ copierId, nextActive })
@@ -650,19 +663,20 @@ export default function ExnessPage() {
     { label: 'Ticket' },
     { label: 'Side', hideOnMobile: true },
     { label: 'Symbol' },
-    { label: 'Lot' },
+    { label: 'Lot', hideOnMobile: true },
     { label: 'Open' },
     { label: 'P/L' },
     { label: 'Giờ mở', hideOnMobile: true },
   ]
+
   const CLOSED_COLS = [
     { label: 'Ticket' },
     { label: 'Side', hideOnMobile: true },
     { label: 'Symbol' },
-    { label: 'Lot' },
+    { label: 'Lot', hideOnMobile: true },
     { label: 'Open', hideOnMobile: true },
     { label: 'Close', hideOnMobile: true },
-    { label: 'Price', hideOnMobile: false },
+    { label: 'Price', hideOnDesktop: true },
     { label: 'P/L' },
     { label: 'Giờ đóng', hideOnMobile: true },
   ]
@@ -746,7 +760,7 @@ export default function ExnessPage() {
                     )}
                   </div>
                 ) : (
-                  <table className="w-full text-sm min-w-[420px]">
+                  <table className="w-full text-sm min-w-[380px]">
                     <TableHead cols={OPEN_COLS} />
                     <tbody>
                       {openPositions.map(pos => (
@@ -772,7 +786,7 @@ export default function ExnessPage() {
                     {loading ? 'Đang tải...' : 'Không có lệnh nào trong khoảng thời gian này'}
                   </div>
                 ) : (
-                  <table className="w-full text-sm min-w-[420px]">
+                  <table className="w-full text-sm min-w-[380px]">
                     <TableHead cols={CLOSED_COLS} />
                     <tbody>
                       {closedPositions.map(t => (

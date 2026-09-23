@@ -9,6 +9,7 @@ const COPIER_NAMES = {
   'COPIER_1': 'test',
   'COPIER_2': 'Standard',
   'COPIER_3': 'Gold 1',
+  'COPIER_4': 'Gold 2',
 }
 const copierLabel = (id) => COPIER_NAMES[id] ? `${COPIER_NAMES[id]}` : id
 const GMT7 = 7 * 60 * 60 * 1000

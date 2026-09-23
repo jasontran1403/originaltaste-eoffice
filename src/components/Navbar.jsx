@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import MessagePanel from './task/MessagePanel'
+import TelegramButton from './telegram/TelegramButton'
 
 const MANAGER = ['ADMIN', 'SUPERADMIN']
 
@@ -53,6 +54,7 @@ export default function Navbar() {
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
+          <TelegramButton />
           <MessagePanel onNavigateTask={handleTaskNav} />
           {auth?.role && <span className="hidden lg:inline-flex badge bg-gray-100 text-gray-500 text-[10px]">{auth.role}</span>}
           <button onClick={logout} className="btn-ghost text-gray-500 hover:text-red-600">

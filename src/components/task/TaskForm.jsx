@@ -160,7 +160,20 @@ export default function TaskForm({ task, onClose, onSaved, isPersonal = false })
 
   const handleSubmit = async () => {
     if (!title.trim()) { toast.warning('Vui lòng nhập tên task'); return }
-    if (subItems.length > 0 && totalWeight !== 100) { toast.warning(`Tổng trọng số phải = 100% (hiện: ${totalWeight}%)`); return }
+
+    // Nếu user đã gõ tên đầu mục vào ô "thêm mới" nhưng chưa bấm +,
+    // tự động add nó trước khi validate — tránh case "Tổng trọng số 50% thay vì 100%"
+    // do đầu mục cuối cùng bị bỏ quên trong input.
+    let finalSubs = subItems
+    if (newSub.trim() && remainingWeight > 0) {
+      finalSubs = [...subItems, { title: newSub.trim(), weight: remainingWeight, assigneeId: null, assigneeName: '' }]
+      setSubItems(finalSubs)
+      setNewSub('')
+    }
+    const finalTotal = finalSubs.reduce((s, i) => s + (i.weight || 0), 0)
+    if (finalSubs.length > 0 && finalTotal !== 100) {
+      toast.warning(`Tổng trọng số phải = 100% (hiện: ${finalTotal}%)`); return
+    }
 
     try {
       setSaving(true)
@@ -169,7 +182,7 @@ export default function TaskForm({ task, onClose, onSaved, isPersonal = false })
         category: category || null, deadline,
         assigneeIds: isPersonal ? [] : assigneeIds,
         sequentialSubtasks: sequential,
-        subItems: subItems.length > 0 ? subItems : null,
+        subItems: finalSubs.length > 0 ? finalSubs : null,
       }
       let res
       if (isPersonal) {
@@ -250,11 +263,45 @@ export default function TaskForm({ task, onClose, onSaved, isPersonal = false })
             <DatePicker value={deadline} onChange={setDeadline} showTime placeholder="Chọn ngày giờ (tùy chọn)" clearable portal />
           </div>
 
-          {/* Assignees — chỉ hiện khi không phải task cá nhân */}
+          {/* Assignee — chỉ hiện khi không phải task cá nhân; 1 user duy nhất */}
           {!isPersonal && (
             <div>
               <label className="label-sm">Giao cho</label>
-              <Select value={assigneeIds} onChange={setAssigneeIds} options={userOpts} multiple searchable placeholder="Chọn người thực hiện..." />
+              {assigneeIds.length > 0 ? (
+                // Đã chọn → hiển thị chip với nút X để gán lại
+                <div className="flex items-center gap-2 p-2 rounded-lg border border-blue-200 bg-blue-50">
+                  <div className="w-7 h-7 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center shrink-0">
+                    {(() => {
+                      const u = users.find(x => x.id === assigneeIds[0])
+                      const nm = u?.fullName || u?.username || '?'
+                      return nm.charAt(0).toUpperCase()
+                    })()}
+                  </div>
+                  <div className="flex-1 min-w-0 text-sm text-gray-900 truncate">
+                    {(() => {
+                      const u = users.find(x => x.id === assigneeIds[0])
+                      return u ? `${u.fullName || u.username} (${u.role})` : `User #${assigneeIds[0]}`
+                    })()}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAssigneeIds([])}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-red-500 hover:bg-red-50 hover:text-red-600 shrink-0"
+                    title="Bỏ chọn để gán lại"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                // Chưa chọn → Select single-mode
+                <Select
+                  value={null}
+                  onChange={v => v && setAssigneeIds([v])}
+                  options={userOpts}
+                  searchable
+                  placeholder="Chọn 1 người thực hiện..."
+                />
+              )}
             </div>
           )}
 

@@ -54,13 +54,23 @@ export default function TaskDetailModal({ taskId, onClose, isAdmin = false, onRe
 
   const handleUpdateProgress = async () => {
     if (!progressNote.trim()) { toast.warning('Vui lòng nhập ghi chú'); return }
+    // Chặn từ FE cho UX tốt — BE cũng đã có guard đồng bộ
+    if (newProgress < (task?.progress || 0)) {
+      toast.warning(`Không thể giảm tiến độ. Hiện tại: ${task?.progress || 0}%`)
+      return
+    }
     try {
       setSaving(true)
       const res = await updateProgress(taskId, { progress: newProgress, note: progressNote })
       if (res.data?.code === 900) {
-        toast.success('Cập nhật tiến độ thành công'); setProgressNote(''); loadTask(); onRefresh?.()
+        toast.success(newProgress >= 100 ? 'Task đã được đánh dấu hoàn thành' : 'Cập nhật tiến độ thành công')
+        setProgressNote(''); loadTask(); onRefresh?.()
+      } else {
+        toast.error(res.data?.message || 'Cập nhật thất bại')
       }
-    } catch { toast.error('Lỗi') } finally { setSaving(false) }
+    } catch (e) {
+      toast.error(e.response?.data?.message || e.message || 'Cập nhật thất bại')
+    } finally { setSaving(false) }
   }
 
   const handleComplete = async () => {
@@ -202,15 +212,47 @@ export default function TaskDetailModal({ taskId, onClose, isAdmin = false, onRe
         {/* Progress tab */}
         {tab === 'progress' && (
           <div className="space-y-4">
-            {canEdit && !hasSubs && (
+            {canEdit && !hasSubs && task.progress < 100 && task.status !== 'COMPLETED' && (
               <div className="p-3 bg-blue-50 rounded-xl space-y-3">
                 <p className="text-xs font-semibold text-blue-700">Cập nhật tiến độ</p>
                 <div>
-                  <div className="flex items-center justify-between mb-1"><span className="text-xs text-gray-500">Tiến độ</span><span className="text-sm font-bold text-blue-700">{newProgress}%</span></div>
-                  <input type="range" min="0" max="100" step="5" value={newProgress} onChange={e => setNewProgress(+e.target.value)} className="w-full accent-blue-600" />
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs text-gray-500">Tiến độ</span>
+                    <span className="text-sm font-bold text-blue-700">{newProgress}%</span>
+                  </div>
+                  {/*
+                    Slider full-range 0-100 để thumb hiển thị ĐÚNG vị trí % hiện tại
+                    (VD: task 45% → thumb ở giữa slider, không phải ở đầu bên trái).
+                    Chặn kéo xuống bằng cách reject onChange nếu value mới < progress hiện tại
+                    → React re-render, thumb tự snap ngược lại vị trí cũ.
+                  */}
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="5"
+                    value={newProgress}
+                    onChange={e => {
+                      const v = +e.target.value
+                      const floor = task.progress || 0
+                      if (v >= floor) setNewProgress(v)
+                      // nếu v < floor → không set, thumb sẽ tự trở về newProgress cũ
+                    }}
+                    className="w-full accent-blue-600"
+                  />
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    Chỉ có thể cập nhật từ {task.progress || 0}% trở lên. Đạt 100% task sẽ tự động hoàn thành.
+                  </p>
                 </div>
                 <textarea value={progressNote} onChange={e => setProgressNote(e.target.value)} className="input min-h-[50px]" placeholder="Đã làm được gì..." />
-                <button onClick={handleUpdateProgress} disabled={saving} className="btn-primary w-full justify-center">{saving ? 'Đang lưu...' : 'Cập nhật'}</button>
+                <button onClick={handleUpdateProgress} disabled={saving || newProgress <= (task.progress || 0)} className="btn-primary w-full justify-center disabled:opacity-50">
+                  {saving ? 'Đang lưu...' : (newProgress >= 100 ? 'Cập nhật & Hoàn thành' : 'Cập nhật')}
+                </button>
+              </div>
+            )}
+            {canEdit && !hasSubs && (task.progress >= 100 || task.status === 'COMPLETED') && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-800">
+                ✅ Task đã đạt 100% và được đánh dấu hoàn thành. Không thể cập nhật tiến độ nữa.
               </div>
             )}
             <div>

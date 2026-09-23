@@ -86,9 +86,14 @@ export default function UserTaskBoard() {
   }
 
   return (
-    <div>
+    // ── LAYOUT ─────────────────────────────────────────────────────────
+    // Bọc trong flex-col chiếm hết chiều cao <main> của AppLayout.
+    // Các phần header (stats + filter) → shrink-0, giữ luôn hiển thị.
+    // Phần grid task → flex-1 + overflow-y-auto, chỉ vùng này scroll.
+    // min-h-0 bắt buộc trên child flex, không có nó overflow-y-auto sẽ vô hiệu.
+    <div className="h-full flex flex-col min-h-0">
       {/* Stats row */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5 shrink-0">
         <MiniStat icon="📋" label="Tổng" value={total} tone="blue" />
         <MiniStat icon="🔄" label="Đang làm" value={active.length} tone="indigo" />
         <MiniStat icon="✅" label="Hoàn thành" value={done.length} tone="emerald" />
@@ -98,14 +103,14 @@ export default function UserTaskBoard() {
 
       {/* Avg progress */}
       {active.length > 0 && (
-        <div className="card p-3 mb-4 flex items-center gap-3">
+        <div className="card p-3 mb-4 flex items-center gap-3 shrink-0">
           <span className="text-xs font-semibold text-gray-500 shrink-0">Tiến độ trung bình</span>
           <ProgressBar value={avgProgress} className="flex-1" />
         </div>
       )}
 
       {/* Filters + Create button */}
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="flex flex-wrap gap-2 mb-4 shrink-0">
         <div className="relative flex-1 min-w-[180px]">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" width="14" height="14" viewBox="0 0 14 14" fill="none">
             <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.5" />
@@ -122,28 +127,30 @@ export default function UserTaskBoard() {
         </button>
       </div>
 
-      {/* Task grid */}
-      {loading ? (
-        <div className="flex items-center justify-center h-40">
-          <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="card p-10 text-center">
-          <div className="text-4xl mb-2">📭</div>
-          <p className="text-gray-400 text-sm">
-            {typeFilter === 'PERSONAL' ? 'Bạn chưa tạo task cá nhân nào' : 'Không có task nào'}
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {filtered.map(t => (
-            <TaskCard key={t.id} task={t} onClick={() => setDetailId(t.id)}
-              showType onDelete={t.taskType === 'PERSONAL' ? () => handleDeletePersonal(t.id) : null}
-              onEdit={t.taskType === 'PERSONAL' ? () => { setEditTask(t); setShowForm(true) } : null}
-            />
-          ))}
-        </div>
-      )}
+      {/* Task grid — vùng CHỈ MÌNH nó scroll */}
+      <div className="flex-1 min-h-0 overflow-y-auto -mr-2 pr-2">
+        {loading ? (
+          <div className="flex items-center justify-center h-40">
+            <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="card p-10 text-center">
+            <div className="text-4xl mb-2">📭</div>
+            <p className="text-gray-400 text-sm">
+              {typeFilter === 'PERSONAL' ? 'Bạn chưa tạo task cá nhân nào' : 'Không có task nào'}
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pb-3">
+            {filtered.map(t => (
+              <TaskCard key={t.id} task={t} onClick={() => setDetailId(t.id)}
+                showType onDelete={t.taskType === 'PERSONAL' ? () => handleDeletePersonal(t.id) : null}
+                onEdit={t.taskType === 'PERSONAL' ? () => { setEditTask(t); setShowForm(true) } : null}
+              />
+            ))}
+          </div>
+        )}
+      </div>
 
       {detailId && <TaskDetailModal taskId={detailId} onClose={() => setDetailId(null)} onRefresh={load} />}
       {showForm && <TaskForm task={editTask} onClose={() => setShowForm(false)} onSaved={load} isPersonal />}

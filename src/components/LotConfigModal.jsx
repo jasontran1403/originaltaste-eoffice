@@ -116,6 +116,7 @@ export default function LotConfigModal({
  * - maxDecimals: giới hạn số chữ số sau dấu thập phân (bỏ qua nếu integerOnly)
  * - integerOnly: chỉ cho nhập số nguyên (chặn dấu thập phân)
  * - Chặn wheel up/down (không thay đổi giá trị khi cuộn chuột)
+ * - Khi focus: select toàn bộ value để nhập mới
  */
 function NumInput({ label, hint, value, onChange, disabled, maxDecimals, integerOnly }) {
   const handleChange = (e) => {
@@ -174,6 +175,11 @@ function NumInput({ label, hint, value, onChange, disabled, maxDecimals, integer
     e.target.blur()
   }
 
+  // Khi focus: select toàn bộ value để user gõ là nhập mới luôn
+  const handleFocus = (e) => {
+    e.target.select()
+  }
+
   return (
     <label className="block">
       <span className="block text-xs text-gray-600 mb-1">{label}</span>
@@ -183,6 +189,7 @@ function NumInput({ label, hint, value, onChange, disabled, maxDecimals, integer
         value={value}
         onChange={handleChange}
         onWheel={handleWheel}
+        onFocus={handleFocus}
         disabled={disabled}
         placeholder={hint}
         autoComplete="off"

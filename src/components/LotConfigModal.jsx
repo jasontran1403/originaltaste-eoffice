@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react'
 
-const DEFAULT_SIGNAL_BASE_LOT = 0.04
+const DEFAULT_SIGNAL_BASE_LOT = 0.03
 
 /**
  * Modal sửa cấu hình lot của 1 copier.
  * BẮT BUỘC bot đã tắt trước khi mở/save. Nếu active=true, form disabled + báo.
  *
- * - Signal Base Lot: CHỈ XEM, mặc định 0.04 (không sửa được).
+ * - Signal Base Lot: CHỈ XEM, mặc định 0.03 (không sửa được).
  * - Base Lot + Lot Multiplier: cho sửa.
  * - Khi bấm "Lưu cấu hình" → hiện modal confirm, OK mới gọi onSave.
  */
@@ -20,7 +20,7 @@ export default function LotConfigModal({
   const [lotMultiplier, setLotMultiplier] = useState('')
   const [confirmOpen, setConfirmOpen]     = useState(false)
 
-  // Signal Base Lot: ưu tiên current, fallback về default 0.04
+  // Signal Base Lot: ưu tiên current, fallback về default 0.03
   const signalBaseLot = (() => {
     const v = current?.signalBaseLot
     if (v == null || isNaN(Number(v))) return DEFAULT_SIGNAL_BASE_LOT

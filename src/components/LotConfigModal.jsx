@@ -6,7 +6,7 @@ const DEFAULT_SIGNAL_BASE_LOT = 0.03
  * Modal sửa cấu hình lot của 1 copier.
  * BẮT BUỘC bot đã tắt trước khi mở/save. Nếu active=true, form disabled + báo.
  *
- * - Signal Base Lot: CHỈ XEM, mặc định 0.03 (không sửa được).
+ * - Signal Base Lot: CHỈ XEM, LUÔN = 0.03 (không sửa, không lấy từ current).
  * - Base Lot + Lot Multiplier: cho sửa.
  * - Khi bấm "Lưu cấu hình" → hiện modal confirm, OK mới gọi onSave.
  */
@@ -20,12 +20,8 @@ export default function LotConfigModal({
   const [lotMultiplier, setLotMultiplier] = useState('')
   const [confirmOpen, setConfirmOpen]     = useState(false)
 
-  // Signal Base Lot: ưu tiên current, fallback về default 0.03
-  const signalBaseLot = (() => {
-    const v = current?.signalBaseLot
-    if (v == null || isNaN(Number(v))) return DEFAULT_SIGNAL_BASE_LOT
-    return Number(v)
-  })()
+  // Signal Base Lot: LUÔN cố định 0.03, không phụ thuộc current.
+  const signalBaseLot = DEFAULT_SIGNAL_BASE_LOT
 
   // CHỈ nạp giá trị khi modal MỞ hoặc ĐỔI COPIER.
   // KHÔNG phụ thuộc `current` để tránh reset form khi đang gõ.
@@ -33,7 +29,7 @@ export default function LotConfigModal({
     if (!open) return
     setBaseLot(fmt(current?.baseLot))
     setLotMultiplier(fmt(current?.lotMultiplier))
-    setConfirmOpen(false) // đảm bảo confirm đóng khi mở lại modal
+    setConfirmOpen(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, copierId])
 
@@ -62,7 +58,7 @@ export default function LotConfigModal({
   const handleConfirmSave = () => {
     if (!valid || disabled) return
     onSave({
-      signalBaseLot: signalBaseLot,
+      signalBaseLot: signalBaseLot, // luôn 0.03
       baseLot:       nBase,
       lotMultiplier: nMult,
     })
@@ -70,7 +66,6 @@ export default function LotConfigModal({
   }
 
   const handleCancelConfirm = () => {
-    // Chỉ đóng modal confirm, GIỮ modal chỉnh sửa
     setConfirmOpen(false)
   }
 
@@ -95,7 +90,7 @@ export default function LotConfigModal({
           )}
 
           <div className="space-y-3">
-            {/* Signal Base Lot: chỉ xem */}
+            {/* Signal Base Lot: chỉ xem, luôn 0.03 */}
             <ReadonlyField
               label="Signal Base Lot (lot cơ bản của tk Master)"
               value={fmt(signalBaseLot)}/>

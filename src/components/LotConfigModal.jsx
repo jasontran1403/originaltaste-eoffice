@@ -14,12 +14,16 @@ export default function LotConfigModal({
   const [baseLot, setBaseLot]             = useState('')
   const [lotMultiplier, setLotMultiplier] = useState('')
 
+  // CHỈ nạp giá trị khi modal MỞ hoặc ĐỔI COPIER.
+  // KHÔNG phụ thuộc `current` (vì current có thể là object mới mỗi render
+  // → sẽ reset form khi user đang gõ).
   useEffect(() => {
     if (!open) return
     setSignalBaseLot(fmt(current?.signalBaseLot))
     setBaseLot(fmt(current?.baseLot))
     setLotMultiplier(fmt(current?.lotMultiplier))
-  }, [open, current])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, copierId])
 
   if (!open) return null
 
@@ -36,7 +40,7 @@ export default function LotConfigModal({
     !isNaN(nSignal) && nSignal > 0 &&
     !isNaN(nBase)   && nBase   > 0 &&
     !isNaN(nMult)   && nMult   > 0 &&
-    Number.isInteger(nMult) // Lot Multiplier phải là số nguyên
+    Number.isInteger(nMult)
 
   const disabled = active || saving
 
@@ -110,30 +114,26 @@ export default function LotConfigModal({
   )
 }
 
-/**
- * Input số:
- * - Chỉ cho nhập 0-9 và 1 dấu thập phân (. hoặc ,)
- * - maxDecimals: giới hạn số chữ số sau dấu thập phân (bỏ qua nếu integerOnly)
- * - integerOnly: chỉ cho nhập số nguyên (chặn dấu thập phân)
- * - Chặn wheel up/down (không thay đổi giá trị khi cuộn chuột)
- * - Khi focus: select toàn bộ value để nhập mới
- */
 function NumInput({ label, hint, value, onChange, disabled, maxDecimals, integerOnly }) {
   const handleChange = (e) => {
     let raw = e.target.value
 
     // 1. Chỉ cho phép số và dấu thập phân (. hoặc ,)
-    //    Loại bỏ mọi ký tự khác (chữ, ký tự đặc biệt, khoảng trắng...)
     raw = raw.replace(/[^0-9.,]/g, '')
 
-    // 2. Chỉ cho phép 1 dấu thập phân duy nhất (dấu đầu tiên gặp)
+    // 2. Nếu integerOnly mà có dấu thập phân → CHẶN, giữ nguyên giá trị cũ.
+    //    (Tránh trường hợp gõ "1.0" bị biến thành "10")
+    if (integerOnly && /[.,]/.test(raw)) {
+      return
+    }
+
+    // 3. Chỉ cho phép 1 dấu thập phân duy nhất (dấu đầu tiên gặp)
     const firstDot   = raw.indexOf('.')
     const firstComma = raw.indexOf(',')
     let sepIndex = -1
     let sepChar  = ''
 
     if (firstDot !== -1 && firstComma !== -1) {
-      // có cả 2 → giữ cái xuất hiện trước
       if (firstDot < firstComma) { sepIndex = firstDot; sepChar = '.' }
       else                        { sepIndex = firstComma; sepChar = ',' }
     } else if (firstDot !== -1)   { sepIndex = firstDot; sepChar = '.' }
@@ -147,11 +147,6 @@ function NumInput({ label, hint, value, onChange, disabled, maxDecimals, integer
       raw = raw.replace(/[.,]/g, '')
     }
 
-    // 3. Nếu integerOnly → bỏ luôn dấu thập phân
-    if (integerOnly) {
-      raw = raw.replace(/[.,]/g, '')
-    }
-
     // 4. Giới hạn số chữ số sau dấu thập phân
     if (!integerOnly && typeof maxDecimals === 'number' && sepIndex !== -1) {
       const dotPos = raw.search(/[.,]/)
@@ -162,7 +157,7 @@ function NumInput({ label, hint, value, onChange, disabled, maxDecimals, integer
       }
     }
 
-    // 5. Không cho bắt đầu bằng dấu thập phân (tránh ".5" → thêm "0" phía trước)
+    // 5. Không cho bắt đầu bằng dấu thập phân
     if (raw.startsWith('.') || raw.startsWith(',')) {
       raw = '0' + raw
     }
@@ -170,12 +165,10 @@ function NumInput({ label, hint, value, onChange, disabled, maxDecimals, integer
     onChange(raw)
   }
 
-  // Chặn wheel thay đổi giá trị (blur input khi user cuộn chuột trên input)
   const handleWheel = (e) => {
     e.target.blur()
   }
 
-  // Khi focus: select toàn bộ value để user gõ là nhập mới luôn
   const handleFocus = (e) => {
     e.target.select()
   }

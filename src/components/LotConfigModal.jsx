@@ -35,7 +35,8 @@ export default function LotConfigModal({
   const valid =
     !isNaN(nSignal) && nSignal > 0 &&
     !isNaN(nBase)   && nBase   > 0 &&
-    !isNaN(nMult)   && nMult   > 0
+    !isNaN(nMult)   && nMult   > 0 &&
+    Number.isInteger(nMult) // Lot Multiplier phải là số nguyên
 
   const disabled = active || saving
 
@@ -70,15 +71,20 @@ export default function LotConfigModal({
           <NumInput label="Signal Base Lot (lot cơ bản của tk Master)"
                     hint="Vd: 0.22"
                     value={signalBaseLot} onChange={setSignalBaseLot}
-                    disabled={disabled}/>
+                    disabled={disabled}
+                    maxDecimals={2}/>
+
           <NumInput label="Base Lot (lot cơ bản của tk Copier)"
                     hint="Vd: 0.01"
                     value={baseLot} onChange={setBaseLot}
-                    disabled={disabled}/>
+                    disabled={disabled}
+                    maxDecimals={2}/>
+
           <NumInput label="Lot Multiplier (hệ số nhân)"
-                    hint="Vd: 1.0"
+                    hint="Vd: 1"
                     value={lotMultiplier} onChange={setLotMultiplier}
-                    disabled={disabled}/>
+                    disabled={disabled}
+                    integerOnly/>
         </div>
         
         {error && (
@@ -104,17 +110,85 @@ export default function LotConfigModal({
   )
 }
 
-function NumInput({ label, hint, value, onChange, disabled }) {
+/**
+ * Input số:
+ * - Chỉ cho nhập 0-9 và 1 dấu thập phân (. hoặc ,)
+ * - maxDecimals: giới hạn số chữ số sau dấu thập phân (bỏ qua nếu integerOnly)
+ * - integerOnly: chỉ cho nhập số nguyên (chặn dấu thập phân)
+ * - Chặn wheel up/down (không thay đổi giá trị khi cuộn chuột)
+ */
+function NumInput({ label, hint, value, onChange, disabled, maxDecimals, integerOnly }) {
+  const handleChange = (e) => {
+    let raw = e.target.value
+
+    // 1. Chỉ cho phép số và dấu thập phân (. hoặc ,)
+    //    Loại bỏ mọi ký tự khác (chữ, ký tự đặc biệt, khoảng trắng...)
+    raw = raw.replace(/[^0-9.,]/g, '')
+
+    // 2. Chỉ cho phép 1 dấu thập phân duy nhất (dấu đầu tiên gặp)
+    const firstDot   = raw.indexOf('.')
+    const firstComma = raw.indexOf(',')
+    let sepIndex = -1
+    let sepChar  = ''
+
+    if (firstDot !== -1 && firstComma !== -1) {
+      // có cả 2 → giữ cái xuất hiện trước
+      if (firstDot < firstComma) { sepIndex = firstDot; sepChar = '.' }
+      else                        { sepIndex = firstComma; sepChar = ',' }
+    } else if (firstDot !== -1)   { sepIndex = firstDot; sepChar = '.' }
+    else if (firstComma !== -1)   { sepIndex = firstComma; sepChar = ',' }
+
+    if (sepIndex !== -1) {
+      const before = raw.slice(0, sepIndex).replace(/[.,]/g, '')
+      const after  = raw.slice(sepIndex + 1).replace(/[.,]/g, '')
+      raw = before + sepChar + after
+    } else {
+      raw = raw.replace(/[.,]/g, '')
+    }
+
+    // 3. Nếu integerOnly → bỏ luôn dấu thập phân
+    if (integerOnly) {
+      raw = raw.replace(/[.,]/g, '')
+    }
+
+    // 4. Giới hạn số chữ số sau dấu thập phân
+    if (!integerOnly && typeof maxDecimals === 'number' && sepIndex !== -1) {
+      const dotPos = raw.search(/[.,]/)
+      if (dotPos !== -1) {
+        const intPart  = raw.slice(0, dotPos)
+        const decPart  = raw.slice(dotPos + 1, dotPos + 1 + maxDecimals)
+        raw = intPart + raw[dotPos] + decPart
+      }
+    }
+
+    // 5. Không cho bắt đầu bằng dấu thập phân (tránh ".5" → thêm "0" phía trước)
+    if (raw.startsWith('.') || raw.startsWith(',')) {
+      raw = '0' + raw
+    }
+
+    onChange(raw)
+  }
+
+  // Chặn wheel thay đổi giá trị (blur input khi user cuộn chuột trên input)
+  const handleWheel = (e) => {
+    e.target.blur()
+  }
+
   return (
     <label className="block">
       <span className="block text-xs text-gray-600 mb-1">{label}</span>
-      <input type="number" step="0.001" min="0" inputMode="decimal"
-             value={value} onChange={e => onChange(e.target.value)}
-             disabled={disabled}
-             placeholder={hint}
-             className={`w-full px-3 py-1.5 rounded-lg border text-sm
-               ${disabled ? 'bg-gray-100 text-gray-400 border-gray-200'
-                          : 'border-gray-300 focus:outline-none focus:border-violet-500'}`}/>
+      <input
+        type="text"
+        inputMode={integerOnly ? 'numeric' : 'decimal'}
+        value={value}
+        onChange={handleChange}
+        onWheel={handleWheel}
+        disabled={disabled}
+        placeholder={hint}
+        autoComplete="off"
+        className={`w-full px-3 py-1.5 rounded-lg border text-sm
+          ${disabled ? 'bg-gray-100 text-gray-400 border-gray-200'
+                     : 'border-gray-300 focus:outline-none focus:border-violet-500'}`}/>
     </label>
   )
 }

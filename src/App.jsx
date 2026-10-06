@@ -18,6 +18,7 @@ import UserTaskPage from './pages/user/UserTaskPage'
 
 // Public pages (no auth)
 import ExnessPage from './pages/ExnessPage'
+import NewsPage from './pages/NewsPage'
 
 /**
  * vps.domain.com
@@ -61,6 +62,7 @@ export default function App() {
 
         {/* Public — bot monitor */}
         <Route path="/exness" element={<ExnessPage />} />
+        <Route path="/news" element={<NewsPage />} />
 
         <Route path="/" element={<Protected><AppLayout /></Protected>}>
           <Route index element={<RoleIndex />} />

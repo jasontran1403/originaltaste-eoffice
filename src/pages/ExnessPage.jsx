@@ -596,6 +596,7 @@ export default function ExnessPage() {
             </svg>
           </div>
           <span className="text-base font-bold tracking-tight">MT5 Bot Monitor</span>
+          <a href="/news" className="text-xs text-rose-600 hover:underline font-medium">📰 Tin</a>
           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${connected ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-gray-100 text-gray-400 border border-gray-200'}`}>
             <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-500 animate-pulse' : 'bg-gray-300'}`} />
             {connected ? 'Live' : 'Offline'}

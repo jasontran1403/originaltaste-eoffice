@@ -1,18 +1,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Client } from '@stomp/stompjs'
 import SockJS from 'sockjs-client'
-import ConfirmModal from "../components/common/ConfirmModal"
-import LotConfigModal from "../components/LotConfigModal"
-const BASE = import.meta.env.VITE_API_URL || 'http://localhost:9009'
+import ConfirmModal from '../components/common/ConfirmModal'
 
-// Map copierId → tên hiển thị
-const COPIER_NAMES = {
-  'COPIER_1': 'test',
-  'COPIER_2': 'Standard',
-  'COPIER_3': 'Gold 1',
-  'COPIER_4': 'Gold 2',
-}
-const copierLabel = (id) => COPIER_NAMES[id] ? `${COPIER_NAMES[id]}` : id
+const BASE = import.meta.env.VITE_API_URL || 'http://localhost:9009'
 const GMT7 = 7 * 60 * 60 * 1000
 
 /* ================================================================
@@ -29,8 +20,6 @@ const dow0 = (y, m) => new Date(y, m, 1).getDay()
 const keyToDate = (k) => { const { y, m, d } = parseKey(k); return new Date(y, m, d) }
 const isBefore = (a, b) => keyToDate(a) < keyToDate(b)
 const isAfter = (a, b) => keyToDate(a) > keyToDate(b)
-
-const toApiDate = (k) => k
 
 /* ================================================================
    FORMAT HELPERS
@@ -50,24 +39,13 @@ const toGmt7 = (iso) => {
   catch { return null }
 }
 const fmtTime = (iso) => { const d = toGmt7(iso); return d ? d.toISOString().substring(11, 19) : '—' }
-const fmtTimeRaw = (raw) => {
-  if (!raw) return '—'
-  const s = String(raw)
-  const mq5 = s.match(/(\d{4})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2}):(\d{2})/)
-  if (mq5) {
-    const [, y, mo, d, h, mi, se] = mq5.map(Number)
-    const dt = new Date(Date.UTC(y, mo - 1, d, h, mi, se) + GMT7)
-    return dt.toISOString().substring(11, 19)
-  }
-  return fmtTime(s)
-}
 
 const calcNet = (t) => Number(t.profit || 0) + Number(t.commission || 0) + Number(t.swap || 0) + Number(t.fee || 0)
 const profitSign = (v) => v > 0.001 ? '+' : ''
 const profitClass = (v) => v > 0.001 ? 'text-emerald-600' : v < -0.001 ? 'text-rose-500' : 'text-gray-400'
 
 /* ================================================================
-   VALUE PULSE
+   PULSE
    ================================================================ */
 function useValuePulse(value) {
   const prev = useRef(value); const [s, setS] = useState({ key: 0, dir: null })
@@ -78,7 +56,6 @@ function useValuePulse(value) {
     prev.current = value; setS(x => ({ key: x.key + 1, dir }))
   }, [value]); return s
 }
-
 function AnimatedValue({ value, className = '', pulseKey, direction }) {
   const [pulse, setPulse] = useState(false); const first = useRef(true)
   useEffect(() => { if (first.current) { first.current = false; return } setPulse(true); const t = setTimeout(() => setPulse(false), 700); return () => clearTimeout(t) }, [pulseKey])
@@ -87,28 +64,39 @@ function AnimatedValue({ value, className = '', pulseKey, direction }) {
 }
 
 /* ================================================================
-   DATE RANGE PICKER
+   STATE BADGE / BUTTON
    ================================================================ */
-const MONTHS_VI = ['Tháng 1', 'Tháng 2', 'Tháng 3', 'Tháng 4', 'Tháng 5', 'Tháng 6',
-  'Tháng 7', 'Tháng 8', 'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12']
-const DAYS_VI = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7']
+const STATE_META = {
+  RUNNING:  { label: 'ĐANG CHẠY',   dot: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50',  border: 'border-emerald-200',  pulse: true  },
+  PAUSED:   { label: 'ĐANG NGƯNG',  dot: 'bg-amber-400',   text: 'text-amber-700',  bg: 'bg-amber-50',    border: 'border-amber-200',    pulse: false },
+  STOPPING: { label: 'ĐANG TẮT',    dot: 'bg-rose-500',    text: 'text-rose-700',   bg: 'bg-rose-50',     border: 'border-rose-200',     pulse: true  },
+}
+function StateBadge({ state }) {
+  const m = STATE_META[state] || STATE_META.PAUSED
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${m.text} ${m.bg} ${m.border}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${m.dot} ${m.pulse ? 'animate-pulse' : ''}`} />
+      {m.label}
+    </span>
+  )
+}
 
+/* ================================================================
+   DATE RANGE PICKER (giữ gọn — dropdown đơn giản)
+   ================================================================ */
+const MONTHS_VI = ['Tháng 1','Tháng 2','Tháng 3','Tháng 4','Tháng 5','Tháng 6','Tháng 7','Tháng 8','Tháng 9','Tháng 10','Tháng 11','Tháng 12']
+const DAYS_VI = ['CN','T2','T3','T4','T5','T6','T7']
 function CalendarMonth({ year, month, startKey, endKey, hoverKey, onDayClick, onDayHover, todayKey }) {
   const days = daysInMonth(year, month)
   const startDow = dow0(year, month)
   const cells = []
   for (let i = 0; i < startDow; i++) cells.push(null)
   for (let d = 1; d <= days; d++) cells.push(d)
-
   return (
     <div className="select-none">
-      <div className="text-center text-sm font-semibold text-gray-700 mb-2">
-        {MONTHS_VI[month]} {year}
-      </div>
+      <div className="text-center text-sm font-semibold text-gray-700 mb-2">{MONTHS_VI[month]} {year}</div>
       <div className="grid grid-cols-7 mb-1">
-        {DAYS_VI.map(d => (
-          <div key={d} className="text-center text-[10px] font-medium text-gray-400 py-0.5">{d}</div>
-        ))}
+        {DAYS_VI.map(d => <div key={d} className="text-center text-[10px] font-medium text-gray-400 py-0.5">{d}</div>)}
       </div>
       <div className="grid grid-cols-7 gap-y-0.5">
         {cells.map((d, i) => {
@@ -119,256 +107,224 @@ function CalendarMonth({ year, month, startKey, endKey, hoverKey, onDayClick, on
           const isEnd = k === endKey
           const isEdge = isStart || isEnd
           const inRange = startKey && endKey && !isBefore(k, startKey) && !isAfter(k, endKey)
-          const inHover = startKey && !endKey && hoverKey &&
-            !isBefore(k, startKey) && !isAfter(k, hoverKey)
+          const inHover = startKey && !endKey && hoverKey && !isBefore(k, startKey) && !isAfter(k, hoverKey)
           return (
             <button key={k} onClick={() => onDayClick(k)} onMouseEnter={() => onDayHover(k)}
-              className={`
-                relative h-8 w-full text-xs rounded-md font-medium transition-colors
+              className={`relative h-8 w-full text-xs rounded-md font-medium transition-colors
                 ${isEdge ? 'bg-violet-600 text-white z-10' : ''}
                 ${!isEdge && (inRange || inHover) ? 'bg-violet-100 text-violet-700' : ''}
                 ${!isEdge && !inRange && !inHover ? 'text-gray-700 hover:bg-gray-100' : ''}
-                ${isToday && !isEdge ? 'ring-1 ring-violet-400' : ''}
-              `}>
-              {d}
-            </button>
+                ${isToday && !isEdge ? 'ring-1 ring-violet-400' : ''}`}>{d}</button>
           )
         })}
       </div>
     </div>
   )
 }
-
 function DateRangePicker({ startKey, endKey, onChange }) {
   const today = todayGmt7()
   const todayKey = dateKey(today.y, today.m, today.d)
-
   const [leftYear, setLeftYear] = useState(today.m === 0 ? today.y - 1 : today.y)
   const [leftMonth, setLeftMonth] = useState(today.m === 0 ? 11 : today.m - 1)
   const [hoverKey, setHoverKey] = useState(null)
   const [open, setOpen] = useState(false)
-  const [isMobile, setIsMobile] = useState(false)
   const ref = useRef(null)
-  const panelRef = useRef(null)
-
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768)
-    check(); window.addEventListener('resize', check)
-    return () => window.removeEventListener('resize', check)
-  }, [])
-
   const rightYear = leftMonth === 11 ? leftYear + 1 : leftYear
   const rightMonth = leftMonth === 11 ? 0 : leftMonth + 1
-
-  const prevMonth = () => {
-    if (leftMonth === 0) { setLeftYear(y => y - 1); setLeftMonth(11) }
-    else setLeftMonth(m => m - 1)
-  }
-  const nextMonth = () => {
-    if (rightMonth === 11) { setLeftYear(y => y + 1); setLeftMonth(0) }
-    else setLeftMonth(m => m + 1)
-  }
-
+  const prevMonth = () => { if (leftMonth === 0) { setLeftYear(y => y - 1); setLeftMonth(11) } else setLeftMonth(m => m - 1) }
+  const nextMonth = () => { if (rightMonth === 11) { setLeftYear(y => y + 1); setLeftMonth(0) } else setLeftMonth(m => m + 1) }
   const handleDayClick = (k) => {
-    if (!startKey || (startKey && endKey)) {
-      onChange(k, null)
-    } else {
-      if (isBefore(k, startKey)) onChange(k, startKey)
-      else onChange(startKey, k)
-      setOpen(false)
-    }
+    if (!startKey || (startKey && endKey)) onChange(k, null)
+    else { if (isBefore(k, startKey)) onChange(k, startKey); else onChange(startKey, k); setOpen(false) }
   }
-
-  // Close on outside click — phải kiểm tra cả panel (vì trên mobile panel
-  // render ra ngoài `ref` bằng portal-like fixed nên vẫn nằm trong DOM
-  // nhưng không phải con của ref)
   useEffect(() => {
     if (!open) return
-    const handler = (e) => {
-      if (ref.current && ref.current.contains(e.target)) return
-      if (panelRef.current && panelRef.current.contains(e.target)) return
-      setOpen(false)
-    }
-    document.addEventListener('mousedown', handler)
-    document.addEventListener('touchstart', handler)
-    return () => {
-      document.removeEventListener('mousedown', handler)
-      document.removeEventListener('touchstart', handler)
-    }
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler); return () => document.removeEventListener('mousedown', handler)
   }, [open])
-
-  // Khi mở trên mobile, khoá scroll body để không bị nhảy khi chọn tháng
-  useEffect(() => {
-    if (!open || !isMobile) return
-    const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = prevOverflow }
-  }, [open, isMobile])
-
-  const fmtDisplay = (k) => {
-    if (!k) return ''
-    const { y, m, d } = parseKey(k)
-    return `${String(d).padStart(2, '0')}/${String(m + 1).padStart(2, '0')}/${y}`
-  }
-
-  const label = startKey && endKey
-    ? (startKey === endKey ? fmtDisplay(startKey) : `${fmtDisplay(startKey)} – ${fmtDisplay(endKey)}`)
-    : startKey ? `${fmtDisplay(startKey)} – ...` : 'Chọn ngày'
-
-  // Nội dung panel — dùng chung cho cả 2 layout
-  const PanelContent = (
-    <>
-      <div className="flex items-center justify-between mb-3">
-        <button onClick={prevMonth}
-          className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
-        <button onClick={nextMonth}
-          className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
-      </div>
-
-      <div className={isMobile ? '' : 'grid grid-cols-2 gap-6'}>
-        <CalendarMonth year={leftYear} month={leftMonth}
-          startKey={startKey} endKey={endKey} hoverKey={hoverKey} todayKey={todayKey}
-          onDayClick={handleDayClick} onDayHover={setHoverKey} />
-        {!isMobile && (
-          <CalendarMonth year={rightYear} month={rightMonth}
-            startKey={startKey} endKey={endKey} hoverKey={hoverKey} todayKey={todayKey}
-            onDayClick={handleDayClick} onDayHover={setHoverKey} />
-        )}
-      </div>
-
-      <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-gray-100">
-        {[
-          { label: 'Hôm nay', fn: () => { const k = dateKey(today.y, today.m, today.d); onChange(k, k); setOpen(false) } },
-          {
-            label: 'Hôm qua', fn: () => {
-              const y = new Date(Date.now() + GMT7 - 86400000)
-              const k = dateKey(y.getUTCFullYear(), y.getUTCMonth(), y.getUTCDate())
-              onChange(k, k); setOpen(false)
-            }
-          },
-          {
-            label: '7 ngày', fn: () => {
-              const from = new Date(Date.now() + GMT7 - 6 * 86400000)
-              onChange(dateKey(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()),
-                dateKey(today.y, today.m, today.d)); setOpen(false)
-            }
-          },
-          {
-            label: '30 ngày', fn: () => {
-              const from = new Date(Date.now() + GMT7 - 29 * 86400000)
-              onChange(dateKey(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()),
-                dateKey(today.y, today.m, today.d)); setOpen(false)
-            }
-          },
-          {
-            label: 'Tháng này', fn: () => {
-              onChange(dateKey(today.y, today.m, 1), dateKey(today.y, today.m, today.d)); setOpen(false)
-            }
-          },
-        ].map(({ label, fn }) => (
-          <button key={label} onClick={fn}
-            className="px-2.5 py-1 text-[11px] rounded-md bg-gray-100
-                       hover:bg-violet-100 hover:text-violet-700 text-gray-600
-                       font-medium transition-colors">
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {startKey && !endKey && (
-        <p className="text-[10px] text-gray-400 mt-2 text-center">Chọn ngày kết thúc</p>
-      )}
-    </>
-  )
-
+  const fmtDisplay = (k) => { if (!k) return ''; const { y, m, d } = parseKey(k); return `${String(d).padStart(2,'0')}/${String(m+1).padStart(2,'0')}/${y}` }
+  const label = startKey && endKey ? (startKey === endKey ? fmtDisplay(startKey) : `${fmtDisplay(startKey)} – ${fmtDisplay(endKey)}`) : startKey ? `${fmtDisplay(startKey)} – ...` : 'Chọn ngày'
   return (
     <div ref={ref} className="relative">
       <button onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300
-                   bg-white hover:bg-gray-50 text-xs font-medium text-gray-700
-                   shadow-sm transition-colors whitespace-nowrap">
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-xs font-medium text-gray-700 shadow-sm transition-colors whitespace-nowrap">
         <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
         </svg>
         <span>{label}</span>
-        <svg className="w-3 h-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
       </button>
-
-      {/* ── Mobile: bottom-sheet fixed, không bị overflow cắt ── */}
-      {open && isMobile && (
-        <div
-          className="fixed inset-0 z-[100] flex items-end justify-center"
-          onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false) }}
-          onTouchStart={(e) => { if (e.target === e.currentTarget) setOpen(false) }}
-        >
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-          <div
-            ref={panelRef}
-            className="relative w-full max-w-md bg-white rounded-t-2xl shadow-2xl
-                       p-4 pb-5 max-h-[90vh] overflow-y-auto"
-            style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom))' }}
-          >
-            {/* Drag handle */}
-            <div className="w-10 h-1 rounded-full bg-gray-300 mx-auto mb-3" />
-            {PanelContent}
+      {open && (
+        <div className="absolute right-0 top-full mt-2 z-50 bg-white rounded-xl shadow-xl border border-gray-200 p-4" style={{ minWidth: 560 }}>
+          <div className="flex items-center justify-between mb-3">
+            <button onClick={prevMonth} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">◀</button>
+            <button onClick={nextMonth} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">▶</button>
+          </div>
+          <div className="grid grid-cols-2 gap-6">
+            <CalendarMonth year={leftYear} month={leftMonth} startKey={startKey} endKey={endKey} hoverKey={hoverKey} todayKey={todayKey} onDayClick={handleDayClick} onDayHover={setHoverKey} />
+            <CalendarMonth year={rightYear} month={rightMonth} startKey={startKey} endKey={endKey} hoverKey={hoverKey} todayKey={todayKey} onDayClick={handleDayClick} onDayHover={setHoverKey} />
+          </div>
+          <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-gray-100">
+            {[
+              { label: 'Hôm nay', fn: () => { const k = dateKey(today.y, today.m, today.d); onChange(k, k); setOpen(false) } },
+              { label: '7 ngày', fn: () => { const from = new Date(Date.now() + GMT7 - 6 * 86400000); onChange(dateKey(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()), dateKey(today.y, today.m, today.d)); setOpen(false) } },
+              { label: '30 ngày', fn: () => { const from = new Date(Date.now() + GMT7 - 29 * 86400000); onChange(dateKey(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()), dateKey(today.y, today.m, today.d)); setOpen(false) } },
+              { label: 'Tháng này', fn: () => { onChange(dateKey(today.y, today.m, 1), dateKey(today.y, today.m, today.d)); setOpen(false) } },
+            ].map(({ label, fn }) => (
+              <button key={label} onClick={fn} className="px-2.5 py-1 text-[11px] rounded-md bg-gray-100 hover:bg-violet-100 hover:text-violet-700 text-gray-600 font-medium">{label}</button>
+            ))}
           </div>
         </div>
       )}
-
-      {/* ── Desktop: dropdown absolute như cũ ── */}
-      {open && !isMobile && (
-        <div
-          ref={panelRef}
-          className="absolute right-0 top-full mt-2 z-50 bg-white rounded-xl shadow-xl
-                     border border-gray-200 p-4"
-          style={{ minWidth: 560 }}
-        >
-          {PanelContent}
-        </div>
-      )}
     </div>
   )
 }
 
 /* ================================================================
-   COL HEADER
+   LOT MODAL (chỉ cho sửa khi PAUSED)
+   - Chấp nhận cả "." và "," làm dấu thập phân
+   - Tối đa 2 số sau thập phân
+   - Min 0.01
+   - Bỏ spinner (type="text" + inputMode="decimal")
+   - Auto-select khi click
    ================================================================ */
-function ColHeader({ title, totalLot, totalCount, totalPnL, accent, pnlPulseKey, pnlDir, children }) {
-  const pc = totalPnL == null ? 'text-gray-400'
-    : totalPnL > 0.001 ? 'text-emerald-600' : totalPnL < -0.001 ? 'text-rose-500' : 'text-gray-400'
+const LOT_MIN = 0.01
+
+/** Chuẩn hóa string lot: trả về {text, number|null}.
+ *  Accept rỗng, "0", "0.", "0.0", "0.01", "0,5", "1.23", "12".
+ *  Reject: nhiều dấu thập phân, > 2 số sau thập phân, chữ cái.
+ */
+function normalizeLotInput(raw) {
+  if (raw == null) return { text: '', number: null }
+  // Thay dấu "," → "." để parse. Hiển thị giữ nguyên dấu user gõ.
+  let s = String(raw).trim()
+  // Chỉ cho ký tự số + 1 dấu , hoặc .
+  s = s.replace(/[^\d.,]/g, '')
+  // Nếu có cả "." và "," → chỉ giữ ký tự đầu tiên gặp
+  const firstSep = s.search(/[.,]/)
+  if (firstSep >= 0) {
+    const sep = s[firstSep]
+    // Chỉ 1 dấu thập phân: xóa tất cả dấu phân cách còn lại trong phần sau
+    const head = s.slice(0, firstSep)
+    const tail = s.slice(firstSep + 1).replace(/[.,]/g, '')
+    s = head + sep + tail.slice(0, 2)   // cắt max 2 số sau thập phân
+  }
+  const forParse = s.replace(',', '.')
+  const num = s === '' || s === '.' || s === ',' ? null : Number(forParse)
+  return { text: s, number: isNaN(num) ? null : num }
+}
+
+function LotEditModal({ open, current, canEdit, saving, error, onClose, onSave }) {
+  const [text, setText] = useState('')
+  const inputRef = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    // Hiển thị lot hiện tại với format đẹp (bỏ 0 thừa, giữ ít nhất 2 số thập phân nếu có)
+    const init = current && current > 0 ? Number(current).toFixed(2).replace(/\.?0+$/, '') : ''
+    setText(init || String(current ?? ''))
+    // Auto-focus + select hết sau khi modal render
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus()
+        inputRef.current.select()
+      }
+    }, 50)
+  }, [open, current])
+
+  if (!open) return null
+
+  const { text: shownText, number } = normalizeLotInput(text)
+  const invalid = number == null || number < LOT_MIN
+  const belowMin = number != null && number < LOT_MIN
+  const errMsg = error || (text && belowMin ? `Lot tối thiểu là ${LOT_MIN}` : null)
+
+  const handleChange = (e) => {
+    const { text: cleaned } = normalizeLotInput(e.target.value)
+    setText(cleaned)
+  }
+
   return (
-    <div className="px-4 py-2.5 border-b border-gray-200 flex items-center justify-between flex-wrap gap-2 bg-gray-50 flex-shrink-0">
-      <div className="flex items-center gap-2.5">
-        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${accent}`} />
-        <span className="text-sm font-semibold text-gray-800">{title}</span>
-      </div>
-      <div className="flex items-center gap-3 text-xs tabular-nums flex-wrap">
-        {totalCount != null && <span className="text-gray-500">{totalCount} lệnh</span>}
-        <span className="text-gray-500">Lot: <b className="text-gray-700">{fmtVN(totalLot, 2)}</b></span>
-        {totalPnL !== null && (
-          <span className="text-gray-500">P/L:{' '}
-            <AnimatedValue value={`${profitSign(totalPnL)}${fmtVN(totalPnL)}`}
-              className={`text-xs ${pc}`} pulseKey={pnlPulseKey} direction={pnlDir} />
-          </span>
-        )}
-        {children}
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4" onClick={saving ? undefined : onClose}>
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+      <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="p-5">
+          <h3 className="text-base font-bold text-gray-900">Sửa lot</h3>
+          {!canEdit ? (
+            <p className="mt-2 text-sm text-rose-600">Bot phải ở trạng thái <b>ĐANG NGƯNG</b> mới sửa được lot.</p>
+          ) : (
+            <>
+              <p className="mt-1 text-sm text-gray-500">
+                Nhập lot mới. Tối thiểu <code>{LOT_MIN}</code>, tối đa 2 số sau dấu thập phân. Dùng dấu <code>.</code> hoặc <code>,</code> đều được.
+              </p>
+              <input
+                ref={inputRef}
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                value={shownText}
+                onChange={handleChange}
+                onFocus={e => e.target.select()}
+                onClick={e => e.target.select()}
+                placeholder="0.01"
+                className={`mt-3 w-full h-11 px-3 rounded-lg border text-base tabular-nums focus:outline-none focus:ring-2
+                  ${invalid && text ? 'border-rose-300 focus:ring-rose-200' : 'border-gray-300 focus:ring-violet-200'}`}
+              />
+              {errMsg && <p className="mt-2 text-sm text-rose-600">{errMsg}</p>}
+            </>
+          )}
+        </div>
+        <div className="flex gap-2 p-4 pt-0">
+          <button onClick={onClose} disabled={saving} className="flex-1 h-11 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50">Hủy</button>
+          <button onClick={() => onSave(number)} disabled={saving || invalid || !canEdit}
+            className="flex-1 h-11 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold disabled:opacity-50">
+            {saving ? 'Đang lưu...' : 'Lưu'}
+          </button>
+        </div>
       </div>
     </div>
   )
 }
 
 /* ================================================================
-   TABLE HEAD
+   STOP MODAL (yêu cầu passcode)
+   ================================================================ */
+function StopPasscodeModal({ open, saving, error, onClose, onConfirm }) {
+  const [pass, setPass] = useState('')
+  useEffect(() => { if (open) setPass('') }, [open])
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4" onClick={saving ? undefined : onClose}>
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+      <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="p-5">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-lg bg-rose-100 text-rose-600">⚠</div>
+            <div className="min-w-0">
+              <h3 className="text-base font-bold text-gray-900">Tắt bot</h3>
+              <p className="mt-1 text-sm text-gray-500">Bot sẽ chuyển sang trạng thái TẮT, không mở lệnh mới và sẽ <b>đóng hết lệnh đang mở</b>. Nhập passcode để xác nhận.</p>
+            </div>
+          </div>
+          <input type="password" value={pass} autoFocus
+            onChange={e => setPass(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && pass) onConfirm(pass) }}
+            placeholder="Passcode"
+            className="mt-4 w-full h-11 px-3 rounded-lg border border-gray-300 text-base tracking-widest focus:outline-none focus:ring-2 focus:ring-rose-200" />
+          {error && <p className="mt-2 text-sm text-rose-600">{error}</p>}
+        </div>
+        <div className="flex gap-2 p-4 pt-0">
+          <button onClick={onClose} disabled={saving} className="flex-1 h-11 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50">Hủy</button>
+          <button onClick={() => onConfirm(pass)} disabled={saving || !pass}
+            className="flex-1 h-11 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm font-semibold disabled:opacity-50">
+            {saving ? 'Đang tắt...' : 'Xác nhận tắt'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ================================================================
+   ROW COMPONENTS
    ================================================================ */
 function TableHead({ cols }) {
   return (
@@ -376,17 +332,11 @@ function TableHead({ cols }) {
       <tr className="border-b border-gray-100">
         {cols.map((c, i) => {
           const label = typeof c === 'string' ? c : c.label
-          const hideOnMobile = typeof c === 'object' && c.hideOnMobile
-          const hideOnDesktop = typeof c === 'object' && c.hideOnDesktop
+          const hideM = typeof c === 'object' && c.hideOnMobile
           return (
             <th key={label}
-              className={`px-3 py-2 text-[10px] font-semibold text-gray-400
-                uppercase tracking-wider whitespace-nowrap
-                ${i >= 3 ? 'text-right' : 'text-left'}
-                ${hideOnMobile ? 'hidden md:table-cell' : ''}
-                ${hideOnDesktop ? 'md:hidden' : ''}`}>
-              {label}
-            </th>
+              className={`px-3 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap
+                ${i >= 3 ? 'text-right' : 'text-left'} ${hideM ? 'hidden md:table-cell' : ''}`}>{label}</th>
           )
         })}
       </tr>
@@ -394,653 +344,431 @@ function TableHead({ cols }) {
   )
 }
 
-
-/* ================================================================
-   SYMBOL + SIDE (+ LOT trên mobile)
-   ================================================================ */
-function SymbolCell({ symbol, direction, lot, lotDigits = 2 }) {
-  const isBuy = direction === 'BUY'
-  return (
-    <>
-      {/* Desktop: chỉ symbol */}
-      <div className="hidden md:block text-xs text-gray-700 font-medium">{symbol || '—'}</div>
-      {/* Mobile: 2 dòng — symbol + mũi tên, dưới là lot */}
-      <div className="md:hidden">
-        <div className="flex items-center gap-1">
-          <span className={`text-xs font-bold ${isBuy ? 'text-emerald-600' : 'text-rose-500'}`}>
-            {symbol || '—'}
-          </span>
-          <span className={`text-[10px] font-bold ${isBuy ? 'text-emerald-500' : 'text-rose-400'}`}>
-            {isBuy ? '▲' : '▼'}
-          </span>
-        </div>
-        <div className="text-[10px] text-gray-400 tabular-nums mt-0.5">
-          {fmtVN(lot, lotDigits)} lot
-        </div>
-      </div>
-    </>
-  )
-}
-
-/* ================================================================
-   OPEN ROW
-   ================================================================ */
-function OpenRow({ pos, isNew, isLeaving }) {
+function OpenRow({ pos, isNew }) {
   const pl = Number(pos.profit || 0)
   return (
-    <tr className={`border-b border-gray-100 transition-all duration-300
-      ${isNew ? 'row-enter-open' : ''} ${isLeaving ? 'row-leave' : 'hover:bg-blue-50/40'}`}>
-      <td className="px-3 py-2.5 text-[11px] text-gray-400 tabular-nums font-mono align-top">
-        <div>#{pos.ticket}</div>
-        <div className="md:hidden text-[10px] text-gray-400 mt-0.5">{fmtTimeRaw(pos.openTime)}</div>
-      </td>
+    <tr className={`border-b border-gray-100 ${isNew ? 'row-enter' : 'hover:bg-blue-50/40'}`}>
+      <td className="px-3 py-2.5 text-[11px] text-gray-400 tabular-nums font-mono">#{pos.ticket}</td>
       <td className="px-3 py-2.5 hidden md:table-cell">
-        <span className={`text-xs font-bold ${pos.direction === 'BUY' ? 'text-emerald-600' : 'text-rose-500'}`}>
-          {pos.direction}
-        </span>
+        <span className={`text-xs font-bold ${pos.direction === 'BUY' ? 'text-emerald-600' : 'text-rose-500'}`}>{pos.direction}</span>
       </td>
-      {/* Symbol (desktop) / Symbol + Lot (mobile) */}
-      <td className="px-3 py-2.5">
-        <SymbolCell symbol={pos.symbol} direction={pos.direction} lot={pos.volume} />
-      </td>
-      {/* Lot — ẩn trên mobile */}
-      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-700 hidden md:table-cell">
-        {fmtVN(pos.volume, 2)}
-      </td>
+      <td className="px-3 py-2.5 text-xs text-gray-700 font-medium">{pos.symbol || '—'}</td>
+      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-700">{fmtVN(pos.volume, 2)}</td>
       <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-600">{fmtPrice(pos.openPrice)}</td>
-      <td className={`px-3 py-2.5 text-right text-xs tabular-nums font-semibold ${profitClass(pl)}`}>
-        {`${profitSign(pl)}${fmtVN(pl)}`}
-      </td>
-      <td className="px-3 py-2.5 text-right text-xs text-gray-400 tabular-nums hidden md:table-cell">
-        {fmtTimeRaw(pos.openTime)}
-      </td>
+      <td className={`px-3 py-2.5 text-right text-xs tabular-nums font-semibold ${profitClass(pl)}`}>{`${profitSign(pl)}${fmtVN(pl)}`}</td>
+      <td className="px-3 py-2.5 text-right text-xs text-gray-400 tabular-nums hidden md:table-cell">{fmtTime(pos.openTime)}</td>
     </tr>
   )
 }
 
-/* ================================================================
-   CLOSED ROW
-   ================================================================ */
-function ClosedRow({ trade: t, isNew }) {
+function ClosedRow({ trade: t }) {
   const dir = t.direction === 'BUY'
   const net = calcNet(t)
-  const hasNet = t.profit != null
-  const closePriceClass = !hasNet
-    ? 'text-gray-400'
-    : net > 0.001 ? 'text-emerald-600' : net < -0.001 ? 'text-rose-500' : 'text-gray-400'
-
   return (
-    <tr className={`border-b border-gray-100 transition-all duration-300
-      ${isNew ? 'row-enter-closed' : ''} hover:bg-amber-50/40`}>
-      <td className="px-3 py-2.5 text-[11px] text-gray-400 tabular-nums font-mono align-top">
-        <div>#{t.positionTicket}</div>
-        <div className="md:hidden text-[10px] text-gray-400 mt-0.5">{fmtTime(t.closeTime)}</div>
-      </td>
+    <tr className="border-b border-gray-100 hover:bg-amber-50/40">
+      <td className="px-3 py-2.5 text-[11px] text-gray-400 tabular-nums font-mono">#{t.ticket}</td>
       <td className="px-3 py-2.5 hidden md:table-cell">
         <span className={`text-xs font-bold ${dir ? 'text-emerald-600' : 'text-rose-500'}`}>{t.direction}</span>
       </td>
-      {/* Symbol (desktop) / Symbol + Lot (mobile) */}
-      <td className="px-3 py-2.5">
-        <SymbolCell symbol={t.symbol} direction={t.direction} lot={t.volume} />
-      </td>
-      {/* Lot — ẩn trên mobile */}
-      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-700 hidden md:table-cell">
-        {fmtVN(t.volume, 2)}
-      </td>
-      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-500 hidden md:table-cell">
-        {fmtPrice(t.openPrice)}
-      </td>
-      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-500 hidden md:table-cell">
-        {fmtPrice(t.closePrice)}
-      </td>
-      <td className="px-3 py-2.5 text-right text-xs tabular-nums md:hidden align-top">
-        <div className="text-gray-500">{fmtPrice(t.openPrice)}</div>
-        <div className={`${closePriceClass} font-semibold mt-0.5`}>{fmtPrice(t.closePrice)}</div>
-      </td>
-      <td className={`px-3 py-2.5 text-right text-xs tabular-nums font-semibold
-        ${!hasNet ? 'text-gray-300' : profitClass(net)}`}>
-        {!hasNet ? '—' : `${profitSign(net)}${fmtVN(net)}`}
-      </td>
-      <td className="px-3 py-2.5 text-right text-xs text-gray-400 tabular-nums hidden md:table-cell">
-        {fmtTime(t.closeTime)}
-      </td>
+      <td className="px-3 py-2.5 text-xs text-gray-700 font-medium">{t.symbol || '—'}</td>
+      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-700">{fmtVN(t.volume, 2)}</td>
+      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-500 hidden md:table-cell">{fmtPrice(t.openPrice)}</td>
+      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-500">{fmtPrice(t.closePrice)}</td>
+      <td className={`px-3 py-2.5 text-right text-xs tabular-nums font-semibold ${profitClass(net)}`}>{`${profitSign(net)}${fmtVN(net)}`}</td>
+      <td className="px-3 py-2.5 text-right text-xs text-gray-400 tabular-nums hidden md:table-cell">{fmtTime(t.closeTime)}</td>
     </tr>
   )
-}
-
-/* ================================================================
-   BOT TOGGLE
-   ================================================================ */
-function BotToggle({ copierId, active, onRequestToggle, toggling, canEnable }) {
-  // canEnable: có được phép bật không (lot config đủ). Nếu đang bật thì luôn cho tắt.
-  const disabled = toggling || !copierId || (!active && !canEnable)
-  const title = !canEnable && !active
-    ? 'Chưa cấu hình lot — hãy nhấn "⚙ Lot" để cấu hình trước'
-    : ''
-  return (
-    <button onClick={() => onRequestToggle(copierId, !active)} disabled={disabled}
-      title={title}
-      className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-semibold
-        transition-all duration-200 shadow-sm select-none border
-        ${active ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-500'
-          : 'bg-white hover:bg-gray-50 text-gray-600 border-gray-300'}
-        ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
-      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${active ? 'bg-white animate-pulse' : 'bg-gray-400'}`} />
-      {toggling ? 'Đang xử lý...' : active ? 'Đang bật' : 'Đang tắt'}
-    </button>
-  )
-}
-
-/* ================================================================
-   LOT CONFIG BUTTON (mở modal)
-   ================================================================ */
-function LotConfigButton({ config, active, onOpen, disabled }) {
-  const valid = config && config.signalBaseLot > 0 && config.baseLot > 0 && config.lotMultiplier > 0
-  const needSetup = !valid
-  const summary = valid
-    ? `${trimNum(config.signalBaseLot)} · ${trimNum(config.baseLot)} · x${trimNum(config.lotMultiplier)}`
-    : 'Chưa cấu hình'
-  return (
-    <button onClick={onOpen} disabled={disabled}
-      title={active ? 'Tắt bot trước khi sửa lot' : 'Sửa cấu hình lot'}
-      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium
-        transition-all duration-200 shadow-sm select-none border
-        ${needSetup ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-300'
-                    : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-300'}
-        ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
-      <span>⚙</span>
-      <span className="hidden sm:inline">Lot:</span>
-      <span className="tabular-nums">{summary}</span>
-    </button>
-  )
-}
-function trimNum(v) {
-  if (v == null || isNaN(Number(v))) return '–'
-  const n = Number(v)
-  return Number.isInteger(n) ? String(n) : n.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')
 }
 
 /* ================================================================
    MAIN
    ================================================================ */
 export default function ExnessPage() {
-  const [copierIds, setCopierIds] = useState([])
+  const [accounts, setAccounts] = useState([])
   const [selectedId, setSelectedId] = useState(null)
-  const [openPositions, setOpenPositions] = useState([])
-  const [syncReady, setSyncReady] = useState(false)
-  const syncTimerRef = useRef(null)
-  const [closedPositions, setClosedPositions] = useState([])
-
-  const [loading, setLoading] = useState(false)
-  const [stateMap, setStateMap] = useState({})
+  const [account, setAccount] = useState(null)       // detail (có openPositions)
+  const [closedList, setClosedList] = useState([])
+  const [closedTotals, setClosedTotals] = useState({ lot: 0, profit: 0 })
+  const [loadingHistory, setLoadingHistory] = useState(false)
   const [connected, setConnected] = useState(false)
-  const [toggling, setToggling] = useState(false)
-  const [newOpenIds, setNewOpenIds] = useState(new Set())
-  const [newClosedIds, setNewClosedIds] = useState(new Set())
-  const [leavingIds, setLeavingIds] = useState(new Set())
+  const [toast, setToast] = useState(null)
 
-  const [confirmToggle, setConfirmToggle] = useState(null)
-  const [lotModalOpen, setLotModalOpen] = useState(false)
-  const [savingLot, setSavingLot]       = useState(false)
-  const [lotError, setLotError]         = useState(null)
-  const [toastMsg, setToastMsg]         = useState(null)
+  // Modal states
+  const [confirmAction, setConfirmAction] = useState(null) // { type: 'RUN'|'PAUSE', ... }
+  const [actionBusy, setActionBusy] = useState(false)
+  const [lotOpen, setLotOpen] = useState(false)
+  const [lotSaving, setLotSaving] = useState(false)
+  const [lotError, setLotError] = useState(null)
+  const [stopOpen, setStopOpen] = useState(false)
+  const [stopSaving, setStopSaving] = useState(false)
+  const [stopError, setStopError] = useState(null)
 
-  const initToday = () => {
-    const t = todayGmt7()
-    return dateKey(t.y, t.m, t.d)
-  }
+  const initToday = () => { const t = todayGmt7(); return dateKey(t.y, t.m, t.d) }
   const [dateStart, setDateStart] = useState(initToday)
-  const [dateEnd, setDateEnd] = useState(initToday)
+  const [dateEnd, setDateEnd]     = useState(initToday)
 
-  const closedScrollRef = useRef(null)
   const clientRef = useRef(null)
 
-  const applyState = useCallback((s) => {
-    if (!s || !s.copierId) return
-    setStateMap(prev => ({
-      ...prev,
-      [s.copierId]: {
-        active:         !!s.active,
-        signalBaseLot:  s.signalBaseLot != null ? Number(s.signalBaseLot) : 0,
-        baseLot:        s.baseLot       != null ? Number(s.baseLot)       : 0,
-        lotMultiplier:  s.lotMultiplier != null ? Number(s.lotMultiplier) : 0,
-        updatedAt:      s.updatedAt || null,
-        changedBy:      s.changedBy || null,
-      },
-    }))
+  const showToast = useCallback((msg, ms = 3500) => {
+    setToast(msg); setTimeout(() => setToast(null), ms)
   }, [])
-  const currentStateFull = selectedId ? stateMap[selectedId] : null
-  const currentActive    = currentStateFull ? !!currentStateFull.active : false
-  const currentConfig    = currentStateFull
-    ? { signalBaseLot: currentStateFull.signalBaseLot, baseLot: currentStateFull.baseLot, lotMultiplier: currentStateFull.lotMultiplier }
-    : { signalBaseLot: 0, baseLot: 0, lotMultiplier: 0 }
-  const canEnable        = currentConfig.signalBaseLot > 0 && currentConfig.baseLot > 0 && currentConfig.lotMultiplier > 0
 
-  // Auto-flip OFF nếu phát hiện state không nhất quán (active nhưng lot chưa đủ).
-  // Xảy ra khi ai đó sửa DB tay, hoặc race condition. FE tự chữa để UI không lệch.
-  useEffect(() => {
-    if (!selectedId || !currentActive || canEnable) return
-    fetch(`${BASE}/api/public/mt5/copier/state`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ copierId: selectedId, active: false, changedBy: 'FE_AUTO_FIX' })
-    }).then(r => r.json()).then(applyState).catch(console.error)
-  }, [selectedId, currentActive, canEnable, applyState])
-
-  const refreshCopierIds = useCallback(() => {
-    return fetch(`${BASE}/api/public/mt5/copier/ids`).then(r => r.json()).then(d => {
-      const ids = d.copierIds || []
-      setCopierIds(prev => {
-        // Chỉ update khi khác nhau (tránh render dư thừa)
-        if (prev.length === ids.length && prev.every((v, i) => v === ids[i])) return prev
-        return ids
-      })
-      setSelectedId(prevSelected => {
-        if (prevSelected && ids.includes(prevSelected)) return prevSelected
-        if (ids.length > 0) return ids.find(id => id === 'COPIER_3') || ids[0]
-        return null
+  // ---- Load account list ----
+  const refreshAccounts = useCallback(() => {
+    return fetch(`${BASE}/api/public/mt5-bot/accounts`).then(r => r.json()).then(d => {
+      const items = d.items || []
+      setAccounts(items)
+      setSelectedId(prev => {
+        if (prev && items.some(a => a.id === prev)) return prev
+        return items.length > 0 ? items[0].id : null
       })
     }).catch(console.error)
   }, [])
-
-  // Load lần đầu + poll 30s để tài khoản mới (EA vừa kết nối) xuất hiện tự động.
-  // WS COPIER_ADDED trigger refresh ngay lập tức (không cần chờ 30s).
   useEffect(() => {
-    refreshCopierIds()
-    const t = setInterval(refreshCopierIds, 30_000)
+    refreshAccounts()
+    const t = setInterval(refreshAccounts, 30_000)
     return () => clearInterval(t)
-  }, [refreshCopierIds])
+  }, [refreshAccounts])
 
-  const fetchHistory = useCallback(async (copierId, from, to) => {
-    if (!copierId || !from || !to) return
-    setLoading(true)
-    setClosedPositions([])
+  // ---- Load account detail (manually, WS updates it after) ----
+  const refreshAccount = useCallback(async (id) => {
+    if (!id) return
     try {
-      const url = `${BASE}/api/public/mt5/copier/history?copierId=${encodeURIComponent(copierId)}&from=${from}&to=${to}`
+      const r = await fetch(`${BASE}/api/public/mt5-bot/accounts/${id}`)
+      const d = await r.json()
+      if (d.success) setAccount(d.account)
+    } catch (e) { console.error(e) }
+  }, [])
+  useEffect(() => { if (selectedId) refreshAccount(selectedId) }, [selectedId, refreshAccount])
+
+  // ---- Load history ----
+  const refreshHistory = useCallback(async (id, from, to) => {
+    if (!id || !from || !to) return
+    setLoadingHistory(true)
+    try {
+      const url = `${BASE}/api/public/mt5-bot/accounts/${id}/history?from=${from}&to=${to}`
       const r = await fetch(url); const d = await r.json()
       if (d.success) {
-        setClosedPositions(d.closedPositions || [])
-        if (d.state) applyState(d.state)
+        setClosedList(d.items || [])
+        setClosedTotals({ lot: d.totalLot || 0, profit: d.totalProfit || 0 })
       }
     } catch (e) { console.error(e) }
-    finally { setLoading(false) }
-  }, [applyState])
-
-  useEffect(() => {
-    if (!selectedId || !dateStart || !dateEnd) return
-    setOpenPositions([])
-    setSyncReady(false)
-    if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
-    syncTimerRef.current = setTimeout(() => setSyncReady(true), 5000)
-    fetchHistory(selectedId, dateStart, dateEnd)
-  }, [selectedId, dateStart, dateEnd, fetchHistory])
-
-  const handleDateChange = useCallback((start, end) => {
-    setDateStart(start); setDateEnd(end || null)
+    finally { setLoadingHistory(false) }
   }, [])
-
-  // Fetch state ngay khi chọn copier mới (kể cả tài khoản chưa có history)
   useEffect(() => {
-    if (!selectedId) return
-    fetch(`${BASE}/api/public/mt5/copier/state?copierId=${encodeURIComponent(selectedId)}`)
-      .then(r => r.json()).then(applyState).catch(console.error)
-  }, [selectedId, applyState])
+    if (selectedId && dateStart && dateEnd) refreshHistory(selectedId, dateStart, dateEnd)
+  }, [selectedId, dateStart, dateEnd, refreshHistory])
 
+  // ---- WebSocket ----
   useEffect(() => {
     if (!selectedId) return
     const client = new Client({
-      webSocketFactory: () => new SockJS(BASE.replace(/^http/, 'http') + '/ws'),
+      webSocketFactory: () => new SockJS(BASE + '/ws'),
       reconnectDelay: 3000, heartbeatIncoming: 10000, heartbeatOutgoing: 10000,
       onConnect: () => {
         setConnected(true)
-
-        // Broadcast toàn cục: có copier mới → refresh list
-        client.subscribe('/topic/mt5-copiers', () => refreshCopierIds())
-
-        client.subscribe('/topic/mt5-monitor', (msg) => {
+        client.subscribe('/topic/mt5-bot/accounts', () => refreshAccounts())
+        client.subscribe(`/topic/mt5-bot/${selectedId}`, (msg) => {
           try {
-            const payload = JSON.parse(msg.body)
-            if (payload.type !== 'ACCOUNT') return
-            const acc = payload.account
-            if (!acc || acc.id !== selectedId) return
-            const positions = acc.positions || []
-            if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
-            setSyncReady(true)
-            setOpenPositions(prev => {
-              const prevTickets = new Set(prev.map(p => p.ticket))
-              const newTickets = new Set(positions.map(p => p.ticket))
-              positions.forEach(p => {
-                if (!prevTickets.has(p.ticket)) {
-                  setNewOpenIds(s => new Set(s).add(p.ticket))
-                  setTimeout(() => setNewOpenIds(s => { const n = new Set(s); n.delete(p.ticket); return n }), 800)
-                }
-              })
-              prev.forEach(p => {
-                if (!newTickets.has(p.ticket)) {
-                  setLeavingIds(s => new Set(s).add(p.ticket))
-                  setTimeout(() => setLeavingIds(s => { const n = new Set(s); n.delete(p.ticket); return n }), 400)
-                }
-              })
-              return positions
-            })
-          } catch (e) { console.error('Monitor WS err', e) }
-        })
-
-        client.subscribe(`/topic/mt5-exness/${selectedId}`, (msg) => {
-          try {
-            const payload = JSON.parse(msg.body)
-            if (payload.type === 'STATE_CHANGE') {
-              if (payload.copierId === selectedId) applyState(payload)
-              return
-            }
-            if (payload.type === 'TRADE_EVENT' && payload.event !== 'OPEN') {
-              const trade = payload.trade; const tk = trade.positionTicket
-              setTimeout(() => {
-                const closeDate = trade.closeTime
-                  ? (() => { const d = toGmt7(trade.closeTime); return d ? dateKey(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) : null })()
-                  : null
-                const inRange = !closeDate || (
-                  (!dateStart || closeDate >= dateStart) &&
-                  (!dateEnd || closeDate <= dateEnd)
-                )
-                if (inRange) {
-                  setClosedPositions(prev => prev.some(t => t.positionTicket === tk) ? prev : [trade, ...prev])
-                  setNewClosedIds(s => new Set(s).add(tk))
-                  setTimeout(() => setNewClosedIds(s => { const n = new Set(s); n.delete(tk); return n }), 800)
-                }
-              }, 450)
-            }
-          } catch (e) { console.error('Exness WS err', e) }
+            const acc = JSON.parse(msg.body)
+            setAccount(acc)
+            // Nếu có closed order mới xuất hiện trong khoảng ngày hiện tại → reload history
+            // (đơn giản: nếu latestClosedTicket thay đổi so với cũ sẽ reload)
+            setAccounts(prev => prev.map(a => a.id === acc.id ? { ...a, ...acc } : a))
+          } catch (e) { console.error(e) }
         })
       },
       onDisconnect: () => setConnected(false),
       onStompError: () => setConnected(false),
     })
     client.activate(); clientRef.current = client
-    return () => {
-      client.deactivate()
-      if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
-    }
-  }, [selectedId, applyState, dateStart, dateEnd, refreshCopierIds])
+    return () => client.deactivate()
+  }, [selectedId, refreshAccounts])
 
-  const requestToggle = useCallback((copierId, nextActive) => {
-    if (!copierId || toggling) return
-    // Chặn bật nếu chưa có lot config
-    if (nextActive && !canEnable) {
-      setToastMsg('Chưa cấu hình lot — hãy nhấn "⚙ Lot" để cấu hình trước.')
-      setTimeout(() => setToastMsg(null), 3500)
+  // reload history khi latest ticket tăng
+  const lastTicketRef = useRef(0)
+  useEffect(() => {
+    if (!account) return
+    if (account.latestClosedTicket > lastTicketRef.current) {
+      lastTicketRef.current = account.latestClosedTicket
+      refreshHistory(selectedId, dateStart, dateEnd)
+    }
+  }, [account, selectedId, dateStart, dateEnd, refreshHistory])
+
+  // ---- Derived ----
+  const openPositions = account?.openPositions || []
+  const openLot = useMemo(() => openPositions.reduce((s, p) => s + Number(p.volume || 0), 0), [openPositions])
+  const openPnL = useMemo(() => openPositions.reduce((s, p) => s + Number(p.profit || 0), 0), [openPositions])
+  const openPulse = useValuePulse(openPnL)
+  const closedPulse = useValuePulse(closedTotals.profit)
+  const equity = account?.equity ?? null
+  const equityPulse = useValuePulse(equity)
+  const state = account?.state || 'PAUSED'
+
+  // ---- Actions ----
+  const doSetState = useCallback(async (next) => {
+    setActionBusy(true)
+    try {
+      const r = await fetch(`${BASE}/api/public/mt5-bot/accounts/${selectedId}/state`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: next })
+      })
+      const d = await r.json()
+      if (!r.ok || d.success === false) { showToast(d.message || `Lỗi ${r.status}`) }
+      else { if (d.account) setAccount(a => ({ ...(a || {}), ...d.account })) }
+    } catch (e) { showToast(String(e.message || e)) }
+    finally { setActionBusy(false); setConfirmAction(null) }
+  }, [selectedId, showToast])
+
+  const doSaveLot = useCallback(async (lot) => {
+    setLotSaving(true); setLotError(null)
+    try {
+      const r = await fetch(`${BASE}/api/public/mt5-bot/accounts/${selectedId}/lot`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lot })
+      })
+      const d = await r.json()
+      if (!r.ok || d.success === false) { setLotError(d.message || `Lỗi ${r.status}`) }
+      else { if (d.account) setAccount(a => ({ ...(a || {}), ...d.account })); setLotOpen(false); showToast('Đã cập nhật lot.') }
+    } catch (e) { setLotError(String(e.message || e)) }
+    finally { setLotSaving(false) }
+  }, [selectedId, showToast])
+
+  const doStop = useCallback(async (passcode) => {
+    setStopSaving(true); setStopError(null)
+    try {
+      const r = await fetch(`${BASE}/api/public/mt5-bot/accounts/${selectedId}/stop`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ passcode })
+      })
+      const d = await r.json()
+      if (!r.ok || d.success === false) { setStopError(d.message || `Lỗi ${r.status}`) }
+      else { if (d.account) setAccount(a => ({ ...(a || {}), ...d.account })); setStopOpen(false); showToast('Đã gửi lệnh tắt bot.') }
+    } catch (e) { setStopError(String(e.message || e)) }
+    finally { setStopSaving(false) }
+  }, [selectedId, showToast])
+
+  const requestRun = () => {
+    if (!currentLot || currentLot <= 0) {
+      showToast('Chưa cấu hình lot — hãy nhấn "⚙ Sửa lot" để cấu hình trước khi bật bot.')
       return
     }
-    setConfirmToggle({ copierId, nextActive })
-  }, [toggling, canEnable])
+    setConfirmAction({ type: 'RUN' })
+  }
+  const requestPause   = () => setConfirmAction({ type: 'PAUSE' })
+  const requestStop    = () => setStopOpen(true)
+  const requestEditLot = () => { setLotError(null); setLotOpen(true) }
 
-  const doToggle = useCallback(async () => {
-    if (!confirmToggle) return
-    const { copierId, nextActive } = confirmToggle
-    setConfirmToggle(null)
-    setToggling(true)
-    try {
-      const r = await fetch(`${BASE}/api/public/mt5/copier/state`,
-        {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ copierId, active: nextActive, changedBy: 'UI' })
-        })
-      const data = await r.json()
-      if (!r.ok || data.success === false) {
-        setToastMsg(data.message || `Lỗi ${r.status}`)
-        setTimeout(() => setToastMsg(null), 4000)
-      } else {
-        applyState(data)
-      }
-    } catch (e) { console.error(e); setToastMsg(String(e.message || e)); setTimeout(() => setToastMsg(null), 4000) }
-    finally { setToggling(false) }
-  }, [confirmToggle, applyState])
-
-  const doSaveLot = useCallback(async (payload) => {
-    if (!selectedId) return
-    setSavingLot(true); setLotError(null)
-    try {
-      const r = await fetch(`${BASE}/api/public/mt5/copier/config`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ copierId: selectedId, ...payload, changedBy: 'UI_LOT' })
-      })
-      const data = await r.json()
-      if (!r.ok || data.success === false) {
-        setLotError(data.message || `Lỗi ${r.status}`)
-      } else {
-        applyState(data)
-        setLotModalOpen(false)
-        setToastMsg('Đã lưu cấu hình lot.')
-        setTimeout(() => setToastMsg(null), 2500)
-      }
-    } catch (e) { setLotError(String(e.message || e)) }
-    finally { setSavingLot(false) }
-  }, [selectedId, applyState])
-
-  const openLot = useMemo(() => openPositions.reduce((s, p) => s + (p.volume || 0), 0), [openPositions])
-  const openPnL = useMemo(() => openPositions.reduce((s, p) => s + Number(p.profit || 0), 0), [openPositions])
-  const closedLot = useMemo(() => closedPositions.reduce((s, t) => s + (t.volume || 0), 0), [closedPositions])
-  const closedPnL = useMemo(() => closedPositions.reduce((s, t) => s + calcNet(t), 0), [closedPositions])
-
-  const openPnlPulse = useValuePulse(openPnL)
-  const closedPnlPulse = useValuePulse(closedPnL)
-
-  const stateInfo = selectedId ? stateMap[selectedId] : null
-  const stateAge = stateInfo?.updatedAt ? (() => {
-    try {
-      const diff = Math.floor((Date.now() - new Date(stateInfo.updatedAt).getTime()) / 1000)
-      if (diff < 60) return `${diff}s trước`
-      if (diff < 3600) return `${Math.floor(diff / 60)}m trước`
-      return `${Math.floor(diff / 3600)}h trước`
-    } catch { return '' }
-  })() : ''
+  const canEditLot = state === 'PAUSED'
+  const currentLot = account?.lot ?? 0
 
   const OPEN_COLS = [
-    { label: 'Ticket' },
-    { label: 'Side', hideOnMobile: true },
-    { label: 'Symbol' },
-    { label: 'Lot', hideOnMobile: true },
-    { label: 'Open' },
-    { label: 'P/L' },
-    { label: 'Giờ mở', hideOnMobile: true },
+    { label: 'Ticket' }, { label: 'Side', hideOnMobile: true }, { label: 'Symbol' },
+    { label: 'Lot' }, { label: 'Open' }, { label: 'P/L' }, { label: 'Giờ mở', hideOnMobile: true },
   ]
-
   const CLOSED_COLS = [
-    { label: 'Ticket' },
-    { label: 'Side', hideOnMobile: true },
-    { label: 'Symbol' },
-    { label: 'Lot', hideOnMobile: true },
-    { label: 'Open', hideOnMobile: true },
-    { label: 'Close', hideOnMobile: true },
-    { label: 'Price', hideOnDesktop: true },
-    { label: 'P/L' },
-    { label: 'Giờ đóng', hideOnMobile: true },
+    { label: 'Ticket' }, { label: 'Side', hideOnMobile: true }, { label: 'Symbol' },
+    { label: 'Lot' }, { label: 'Open', hideOnMobile: true }, { label: 'Close' },
+    { label: 'P/L' }, { label: 'Giờ đóng', hideOnMobile: true },
   ]
 
   return (
     <div className="min-h-[100dvh] md:h-[100dvh] bg-gray-50 text-gray-900 flex flex-col md:overflow-hidden">
-      <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3
-                         flex items-center justify-between gap-3 flex-wrap z-30 shadow-sm flex-shrink-0">
+      <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 flex items-center justify-between gap-3 flex-wrap z-30 shadow-sm flex-shrink-0">
         <div className="flex items-center gap-3 flex-wrap">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 to-blue-600
-                          flex items-center justify-center shadow-sm flex-shrink-0">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 to-blue-600 flex items-center justify-center shadow-sm">
             <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 17l4-8 4 4 4-7 4 8" />
             </svg>
           </div>
-          <span className="text-base font-bold tracking-tight">Copier Trade</span>
-          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold
-            ${connected ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
-              : 'bg-gray-100 text-gray-400 border border-gray-200'}`}>
+          <span className="text-base font-bold tracking-tight">MT5 Bot Monitor</span>
+          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${connected ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-gray-100 text-gray-400 border border-gray-200'}`}>
             <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-500 animate-pulse' : 'bg-gray-300'}`} />
             {connected ? 'Live' : 'Offline'}
           </span>
         </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          {/* Nút Sửa lot — bên TRÁI của tài khoản */}
-          {selectedId && (
-            <LotConfigButton
-              config={currentConfig}
-              active={currentActive}
-              disabled={!selectedId}
-              onOpen={() => { setLotError(null); setLotModalOpen(true) }}
-            />
-          )}
-          {copierIds.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          {accounts.length > 0 && (
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-500 hidden sm:inline">Tài khoản</span>
-              <div className="relative">
-                <select value={selectedId || ''} onChange={e => setSelectedId(e.target.value)}
-                  className="bg-white border border-gray-300 rounded-lg px-3 py-1.5 pr-8
-                             text-sm text-gray-700 focus:outline-none focus:border-violet-500
-                             cursor-pointer appearance-none shadow-sm">
-                  {copierIds.map(id => <option key={id} value={id}>{copierLabel(id)}</option>)}
-                </select>
-                <svg className="pointer-events-none absolute right-2 top-2.5 w-3 h-3 text-gray-400"
-                  fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </div>
-            </div>
-          )}
-          {selectedId && (
-            <div className="flex flex-col items-end gap-0.5">
-              <BotToggle copierId={selectedId} active={currentActive}
-                onRequestToggle={requestToggle} toggling={toggling} canEnable={canEnable} />
+              <select value={selectedId || ''} onChange={e => setSelectedId(Number(e.target.value))}
+                className="bg-white border border-gray-300 rounded-lg px-3 py-1.5 pr-8 text-sm text-gray-700 focus:outline-none focus:border-violet-500 cursor-pointer shadow-sm">
+                {accounts.map(a => (
+                  <option key={a.id} value={a.id}>
+                    {a.name ? `${a.name} · ${a.login}` : a.login} ({a.server})
+                  </option>
+                ))}
+              </select>
             </div>
           )}
         </div>
       </header>
 
+      {/* ===== Account summary bar ===== */}
+      {account && (
+        <section className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3 flex-wrap">
+            <StateBadge state={state} />
+            <div className="text-sm">
+              <span className="text-gray-500 mr-1">Login:</span><b className="tabular-nums">{account.login}</b>
+              {account.name && <span className="ml-2 text-gray-500">· {account.name}</span>}
+              <span className="ml-2 text-gray-400 text-xs">· {account.server}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 text-xs text-gray-500 flex-wrap tabular-nums">
+            <span>Lot cấu hình: <b className="text-gray-800">{fmtVN(currentLot, 2)}</b></span>
+            {account.balance != null && <span>Balance: <b className="text-gray-800">{fmtVN(account.balance)}</b></span>}
+            {equity != null && (
+              <span>Equity:{' '}
+                <AnimatedValue value={fmtVN(equity)} className={`${equity >= (account.balance || equity) ? 'text-emerald-600' : 'text-rose-500'}`}
+                  pulseKey={equityPulse.key} direction={equityPulse.dir} />
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button onClick={requestEditLot} disabled={actionBusy}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50">
+              ⚙ Sửa lot
+            </button>
+            {/* RUNNING → chỉ hiện Ngưng; PAUSED/STOPPING → chỉ hiện Chạy */}
+            {state === 'RUNNING' ? (
+              <button onClick={requestPause} disabled={actionBusy}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold border bg-amber-500 hover:bg-amber-400 text-white border-amber-500 disabled:opacity-40">
+                ⏸ Ngưng
+              </button>
+            ) : (
+              <button onClick={requestRun} disabled={actionBusy}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold border bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-600 disabled:opacity-40">
+                ▶ Chạy
+              </button>
+            )}
+            <button onClick={requestStop} disabled={actionBusy || state === 'STOPPING'}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold border bg-rose-600 hover:bg-rose-500 text-white border-rose-600 disabled:opacity-40">
+              ■ Tắt
+            </button>
+          </div>
+        </section>
+      )}
+
       <main className="flex-1 md:min-h-0 flex flex-col p-4 sm:p-5 gap-4">
         {!selectedId ? (
           <div className="flex-1 flex items-center justify-center">
-            <p className="text-gray-400 text-sm">
-              {copierIds.length === 0 ? 'Chưa có tài khoản nào kết nối.' : 'Chọn tài khoản để xem lệnh.'}
-            </p>
-          </div>
-        ) : loading ? (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="w-7 h-7 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+            <p className="text-gray-400 text-sm">Chưa có tài khoản nào kết nối.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:flex-1 md:min-h-0">
-            {/* CỘT TRÁI: ĐANG MỞ */}
+            {/* LEFT: Open */}
             <div className="bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden shadow-sm md:min-h-0">
-              <ColHeader title="Open Trade" totalLot={openLot} totalCount={openPositions.length}
-                totalPnL={openPnL} accent="bg-blue-500"
-                pnlPulseKey={openPnlPulse.key} pnlDir={openPnlPulse.dir} />
+              <div className="px-4 py-2.5 border-b border-gray-200 flex items-center justify-between flex-wrap gap-2 bg-gray-50">
+                <div className="flex items-center gap-2.5">
+                  <span className="w-2 h-2 rounded-full bg-blue-500" />
+                  <span className="text-sm font-semibold text-gray-800">Lệnh đang mở</span>
+                </div>
+                <div className="flex items-center gap-3 text-xs tabular-nums flex-wrap">
+                  <span className="text-gray-500">{openPositions.length} lệnh</span>
+                  <span className="text-gray-500">Lot: <b className="text-gray-700">{fmtVN(openLot, 2)}</b></span>
+                  <span className="text-gray-500">P/L:{' '}
+                    <AnimatedValue value={`${profitSign(openPnL)}${fmtVN(openPnL)}`} className={profitClass(openPnL)} pulseKey={openPulse.key} direction={openPulse.dir} />
+                  </span>
+                </div>
+              </div>
               <div className="flex-1 overflow-auto min-h-0">
                 {openPositions.length === 0 ? (
-                  <div className="py-16 text-center text-sm select-none">
-                    {!syncReady ? (
-                      <span className="flex items-center justify-center gap-2 text-gray-400">
-                        <span className="w-4 h-4 border-2 border-gray-300 border-t-violet-400 rounded-full animate-spin inline-block" />
-                        Chờ đồng bộ từ MT5...
-                      </span>
-                    ) : (
-                      <span className="text-gray-300">Không có lệnh nào đang mở</span>
-                    )}
-                  </div>
+                  <div className="py-16 text-center text-gray-300 text-sm">Không có lệnh nào đang mở</div>
                 ) : (
                   <table className="w-full text-sm min-w-[380px]">
                     <TableHead cols={OPEN_COLS} />
-                    <tbody>
-                      {openPositions.map(pos => (
-                        <OpenRow key={pos.ticket} pos={pos}
-                          isNew={newOpenIds.has(pos.ticket)} isLeaving={leavingIds.has(pos.ticket)} />
-                      ))}
-                    </tbody>
+                    <tbody>{openPositions.map(p => <OpenRow key={p.ticket} pos={p} />)}</tbody>
                   </table>
                 )}
               </div>
             </div>
 
-            {/* CỘT PHẢI: ĐÃ ĐÓNG */}
+            {/* RIGHT: History */}
             <div className="bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden shadow-sm md:min-h-0">
-              <ColHeader title="Histories" totalLot={closedLot} totalCount={closedPositions.length}
-                totalPnL={closedPnL} accent="bg-amber-500"
-                pnlPulseKey={closedPnlPulse.key} pnlDir={closedPnlPulse.dir}>
-                <DateRangePicker startKey={dateStart} endKey={dateEnd} onChange={handleDateChange} />
-              </ColHeader>
-              <div
-                ref={closedScrollRef}
-                className="overflow-auto md:flex-1 md:min-h-0 h-[600px] md:h-auto md:min-h-0"
-              >
-                {closedPositions.length === 0 ? (
-                  <div className="py-16 text-center text-gray-300 text-sm select-none">
-                    {loading ? 'Đang tải...' : 'Không có lệnh nào trong khoảng thời gian này'}
-                  </div>
+              <div className="px-4 py-2.5 border-b border-gray-200 flex items-center justify-between flex-wrap gap-2 bg-gray-50">
+                <div className="flex items-center gap-2.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-500" />
+                  <span className="text-sm font-semibold text-gray-800">Lịch sử</span>
+                </div>
+                <div className="flex items-center gap-3 text-xs tabular-nums flex-wrap">
+                  <span className="text-gray-500">{closedList.length} lệnh</span>
+                  <span className="text-gray-500">Lot: <b className="text-gray-700">{fmtVN(closedTotals.lot, 2)}</b></span>
+                  <span className="text-gray-500">P/L:{' '}
+                    <AnimatedValue value={`${profitSign(closedTotals.profit)}${fmtVN(closedTotals.profit)}`} className={profitClass(closedTotals.profit)} pulseKey={closedPulse.key} direction={closedPulse.dir} />
+                  </span>
+                  <DateRangePicker startKey={dateStart} endKey={dateEnd} onChange={(s, e) => { setDateStart(s); setDateEnd(e) }} />
+                </div>
+              </div>
+              <div className="overflow-auto md:flex-1 md:min-h-0 h-[500px] md:h-auto">
+                {loadingHistory ? (
+                  <div className="py-16 text-center text-gray-400 text-sm">Đang tải...</div>
+                ) : closedList.length === 0 ? (
+                  <div className="py-16 text-center text-gray-300 text-sm">Không có lệnh nào trong khoảng này</div>
                 ) : (
                   <table className="w-full text-sm min-w-[380px]">
                     <TableHead cols={CLOSED_COLS} />
-                    <tbody>
-                      {closedPositions.map(t => (
-                        <ClosedRow key={t.positionTicket} trade={t} isNew={newClosedIds.has(t.positionTicket)} />
-                      ))}
-                    </tbody>
+                    <tbody>{closedList.map(t => <ClosedRow key={t.ticket} trade={t} />)}</tbody>
                   </table>
                 )}
               </div>
             </div>
-
           </div>
         )}
       </main>
 
-      {/* CONFIRM TOGGLE MODAL */}
-      {confirmToggle && (
-        <ConfirmModal
-          open
-          title={confirmToggle.nextActive ? 'Bật copy-bot' : 'Tắt copy-bot'}
-          message={
-            confirmToggle.nextActive
-              ? `Bật copy-bot cho tài khoản "${copierLabel(confirmToggle.copierId)}"? Bot sẽ bắt đầu sao chép lệnh từ tín hiệu.`
-              : `Tắt copy-bot cho tài khoản "${copierLabel(confirmToggle.copierId)}"? Các lệnh đang mở sẽ bị đóng toàn bộ, và bot sẽ ngừng mở lệnh mới.`
-          }
-          confirmLabel={confirmToggle.nextActive ? 'Bật' : 'Tắt'}
-          danger={!confirmToggle.nextActive}
-          busy={toggling}
-          onConfirm={doToggle}
-          onCancel={() => setConfirmToggle(null)}
-        />
-      )}
-
-      {/* LOT CONFIG MODAL */}
-      <LotConfigModal
-        open={lotModalOpen}
-        onClose={() => setLotModalOpen(false)}
-        copierId={selectedId}
-        copierLabel={selectedId ? copierLabel(selectedId) : ''}
-        active={currentActive}
-        current={currentConfig}
-        onSave={doSaveLot}
-        saving={savingLot}
-        error={lotError}
+      {/* ===== Modals ===== */}
+      <ConfirmModal
+        open={!!confirmAction && confirmAction.type === 'RUN'}
+        title="Bật bot chạy?"
+        message={`Bot sẽ bắt đầu mở/đóng lệnh theo logic. Lot hiện tại: ${fmtVN(currentLot, 2)}.`}
+        confirmLabel="Bật chạy"
+        busy={actionBusy}
+        onConfirm={() => doSetState('RUNNING')}
+        onCancel={() => setConfirmAction(null)}
+      />
+      <ConfirmModal
+        open={!!confirmAction && confirmAction.type === 'PAUSE'}
+        title="Ngưng bot?"
+        message="Bot sẽ ngưng mở lệnh mới, KHÔNG đóng các lệnh đang mở."
+        confirmLabel="Ngưng"
+        busy={actionBusy}
+        onConfirm={() => doSetState('PAUSED')}
+        onCancel={() => setConfirmAction(null)}
       />
 
-      {/* TOAST */}
-      {toastMsg && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60]
-                        bg-gray-900 text-white text-sm px-4 py-2 rounded-lg shadow-lg
-                        max-w-sm text-center animate-fade-in">
-          {toastMsg}
-        </div>
+      <LotEditModal
+        open={lotOpen}
+        current={currentLot}
+        canEdit={canEditLot}
+        saving={lotSaving}
+        error={lotError}
+        onClose={() => setLotOpen(false)}
+        onSave={doSaveLot}
+      />
+
+      <StopPasscodeModal
+        open={stopOpen}
+        saving={stopSaving}
+        error={stopError}
+        onClose={() => setStopOpen(false)}
+        onConfirm={doStop}
+      />
+
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[130] bg-gray-900 text-white text-sm px-4 py-2 rounded-lg shadow-lg max-w-sm text-center animate-fade-in">{toast}</div>
       )}
 
       <style>{`
-        @keyframes fadeIn { from { opacity: 0; transform: translate(-50%, 8px) } to { opacity: 1; transform: translate(-50%, 0) } }
+        @keyframes fadeIn { from { opacity:0; transform: translate(-50%, 8px) } to { opacity:1; transform: translate(-50%, 0) } }
         .animate-fade-in { animation: fadeIn .2s ease both }
-        @keyframes rowEnterOpen   { 0%{opacity:0;transform:translateX(-16px);background:rgba(99,102,241,.08)} 70%{background:rgba(99,102,241,.04)} 100%{opacity:1;transform:translateX(0);background:transparent} }
-        @keyframes rowEnterClosed { 0%{opacity:0;transform:translateX(16px);background:rgba(245,158,11,.10)} 70%{background:rgba(245,158,11,.05)} 100%{opacity:1;transform:translateX(0);background:transparent} }
-        @keyframes rowLeave       { 0%{opacity:1;transform:translateX(0) scale(1)} 100%{opacity:0;transform:translateX(20px) scale(.97)} }
-        .row-enter-open   { animation: rowEnterOpen   .5s cubic-bezier(.16,1,.3,1) both }
-        .row-enter-closed { animation: rowEnterClosed .5s cubic-bezier(.16,1,.3,1) both }
-        .row-leave        { animation: rowLeave .4s ease-in both; pointer-events:none }
+        @keyframes rowEnter { 0% {opacity:0; transform:translateX(-12px); background: rgba(99,102,241,.08)} 100%{opacity:1; transform:translateX(0); background:transparent} }
+        .row-enter { animation: rowEnter .5s cubic-bezier(.16,1,.3,1) both }
         @keyframes valUp   { 0%,100%{color:inherit} 35%{color:#16a34a} }
         @keyframes valDown { 0%,100%{color:inherit} 35%{color:#dc2626} }
-        .val-up    { animation: valUp   .7s ease both }
-        .val-down  { animation: valDown .7s ease both }
-        .val-pulse { animation: valUp   .7s ease both }
+        .val-up   { animation: valUp   .7s ease both }
+        .val-down { animation: valDown .7s ease both }
+        .val-pulse{ animation: valUp   .7s ease both }
       `}</style>
     </div>
   )

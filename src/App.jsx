@@ -18,7 +18,6 @@ import UserTaskPage from './pages/user/UserTaskPage'
 
 // Public pages (no auth)
 import ExnessPage from './pages/ExnessPage'
-import MonitorPage from './pages/MonitorPage'
 
 /**
  * vps.domain.com
@@ -31,7 +30,6 @@ import MonitorPage from './pages/MonitorPage'
 
 const MANAGER_ROLES = ['ADMIN', 'SUPERADMIN']
 const ACCOUNTANT_ROLES = ['ACCOUNTANT']
-const WORKER_ROLES = ['USER', 'SELLER', 'POS'] // + ACCOUNTANT cũng thấy task
 
 function Protected({ children, allow }) {
   const { auth } = useAuth()
@@ -61,9 +59,8 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
 
-        {/* Public pages - no auth required */}
+        {/* Public — bot monitor */}
         <Route path="/exness" element={<ExnessPage />} />
-        <Route path="/monitor" element={<MonitorPage />} />
 
         <Route path="/" element={<Protected><AppLayout /></Protected>}>
           <Route index element={<RoleIndex />} />

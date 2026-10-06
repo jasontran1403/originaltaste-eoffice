@@ -67,9 +67,9 @@ function AnimatedValue({ value, className = '', pulseKey, direction }) {
    STATE BADGE / BUTTON
    ================================================================ */
 const STATE_META = {
-  RUNNING:  { label: 'ĐANG CHẠY',   dot: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50',  border: 'border-emerald-200',  pulse: true  },
-  PAUSED:   { label: 'ĐANG NGƯNG',  dot: 'bg-amber-400',   text: 'text-amber-700',  bg: 'bg-amber-50',    border: 'border-amber-200',    pulse: false },
-  STOPPING: { label: 'ĐANG TẮT',    dot: 'bg-rose-500',    text: 'text-rose-700',   bg: 'bg-rose-50',     border: 'border-rose-200',     pulse: true  },
+  RUNNING:  { label: 'ĐANG CHẠY',    dot: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50',  border: 'border-emerald-200',  pulse: true  },
+  PAUSED:   { label: 'TẠM DỪNG',     dot: 'bg-amber-400',   text: 'text-amber-700',   bg: 'bg-amber-50',    border: 'border-amber-200',    pulse: false },
+  STOPPING: { label: 'ĐÃ TẮT',       dot: 'bg-rose-500',    text: 'text-rose-700',    bg: 'bg-rose-50',     border: 'border-rose-200',     pulse: true  },
 }
 function StateBadge({ state }) {
   const m = STATE_META[state] || STATE_META.PAUSED
@@ -250,7 +250,7 @@ function LotEditModal({ open, current, canEdit, saving, error, onClose, onSave }
         <div className="p-5">
           <h3 className="text-base font-bold text-gray-900">Sửa lot</h3>
           {!canEdit ? (
-            <p className="mt-2 text-sm text-rose-600">Bot phải ở trạng thái <b>ĐANG NGƯNG</b> mới sửa được lot.</p>
+            <p className="mt-2 text-sm text-rose-600">Bot đang <b>CHẠY</b> — hãy ngưng hoặc tắt bot trước khi sửa lot.</p>
           ) : (
             <>
               <p className="mt-1 text-sm text-gray-500">
@@ -550,7 +550,7 @@ export default function ExnessPage() {
 
   const requestRun = () => {
     if (!currentLot || currentLot <= 0) {
-      showToast('Chưa cấu hình lot — hãy nhấn "⚙ Sửa lot" để cấu hình trước khi bật bot.')
+      showToast('Chưa cấu hình lot — hãy nhấn "⚙ Sửa lot" để cấu hình trước khi khởi động bot.')
       return
     }
     setConfirmAction({ type: 'RUN' })
@@ -559,7 +559,7 @@ export default function ExnessPage() {
   const requestStop    = () => setStopOpen(true)
   const requestEditLot = () => { setLotError(null); setLotOpen(true) }
 
-  const canEditLot = state === 'PAUSED'
+  const canEditLot = state !== 'RUNNING'   // PAUSED hoặc STOPPING đều cho sửa
   const currentLot = account?.lot ?? 0
 
   const OPEN_COLS = [
@@ -630,22 +630,31 @@ export default function ExnessPage() {
               className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50">
               ⚙ Sửa lot
             </button>
-            {/* RUNNING → chỉ hiện Ngưng; PAUSED/STOPPING → chỉ hiện Chạy */}
+            {/* Slot 1: Tạm dừng (RUNNING) ↔ Tiếp tục (PAUSED/STOPPING) */}
             {state === 'RUNNING' ? (
               <button onClick={requestPause} disabled={actionBusy}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold border bg-amber-500 hover:bg-amber-400 text-white border-amber-500 disabled:opacity-40">
-                ⏸ Ngưng
+                ⏸ Tạm dừng
               </button>
             ) : (
               <button onClick={requestRun} disabled={actionBusy}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold border bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-600 disabled:opacity-40">
-                ▶ Chạy
+                ▶ Tiếp tục
               </button>
             )}
-            <button onClick={requestStop} disabled={actionBusy || state === 'STOPPING'}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold border bg-rose-600 hover:bg-rose-500 text-white border-rose-600 disabled:opacity-40">
-              ■ Tắt
-            </button>
+
+            {/* Slot 2: Tắt (RUNNING/PAUSED) ↔ Khởi động (STOPPING) */}
+            {state === 'STOPPING' ? (
+              <button onClick={requestRun} disabled={actionBusy}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold border bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-600 disabled:opacity-40">
+                ⏻ Khởi động
+              </button>
+            ) : (
+              <button onClick={requestStop} disabled={actionBusy}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold border bg-rose-600 hover:bg-rose-500 text-white border-rose-600 disabled:opacity-40">
+                ■ Tắt
+              </button>
+            )}
           </div>
         </section>
       )}
@@ -720,18 +729,18 @@ export default function ExnessPage() {
       {/* ===== Modals ===== */}
       <ConfirmModal
         open={!!confirmAction && confirmAction.type === 'RUN'}
-        title="Bật bot chạy?"
+        title={state === 'STOPPING' ? 'Khởi động bot?' : 'Tiếp tục bot?'}
         message={`Bot sẽ bắt đầu mở/đóng lệnh theo logic. Lot hiện tại: ${fmtVN(currentLot, 2)}.`}
-        confirmLabel="Bật chạy"
+        confirmLabel={state === 'STOPPING' ? 'Khởi động' : 'Tiếp tục'}
         busy={actionBusy}
         onConfirm={() => doSetState('RUNNING')}
         onCancel={() => setConfirmAction(null)}
       />
       <ConfirmModal
         open={!!confirmAction && confirmAction.type === 'PAUSE'}
-        title="Ngưng bot?"
-        message="Bot sẽ ngưng mở lệnh mới, KHÔNG đóng các lệnh đang mở."
-        confirmLabel="Ngưng"
+        title="Tạm dừng bot?"
+        message="Bot sẽ tạm dừng mở lệnh mới, KHÔNG đóng các lệnh đang mở."
+        confirmLabel="Tạm dừng"
         busy={actionBusy}
         onConfirm={() => doSetState('PAUSED')}
         onCancel={() => setConfirmAction(null)}

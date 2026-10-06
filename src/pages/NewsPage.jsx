@@ -8,10 +8,12 @@ const BASE = import.meta.env.VITE_API_URL || 'http://localhost:9009'
 const fmtTime = (iso) => {
   if (!iso) return '—'
   const s = String(iso).replace(' ', 'T')
-  const m = s.match(/T(\d{2}:\d{2}:\d{2})/)
-  if (m) return m[1]
-  const m2 = s.match(/(\d{2}:\d{2}:\d{2})/)
-  return m2 ? m2[1] : '—'
+  // Chấp nhận cả HH:mm:ss hoặc HH:mm (Java LocalDateTime bỏ seconds nếu = 0)
+  const m = s.match(/T(\d{2}:\d{2}(?::\d{2})?)/)
+  if (m) return m[1].length === 5 ? m[1] + ':00' : m[1]
+  const m2 = s.match(/(\d{2}:\d{2}(?::\d{2})?)/)
+  if (m2) return m2[1].length === 5 ? m2[1] + ':00' : m2[1]
+  return '—'
 }
 const fmtDate = (iso) => {
   if (!iso) return '—'
@@ -173,10 +175,10 @@ export default function NewsPage() {
                     <table className="w-full text-sm">
                       <thead className="bg-white">
                         <tr className="border-b border-gray-100">
-                          <th className="px-4 py-2 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">Thời gian</th>
-                          <th className="px-4 py-2 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">Impact</th>
-                          <th className="px-4 py-2 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Tên tin</th>
-                          <th className="px-4 py-2 text-right text-[10px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">Còn</th>
+                          <th className="px-4 py-2 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">Thời gian lên tin</th>
+                          <th className="px-4 py-2 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">Mức độ ảnh hưởng</th>
+                          <th className="px-4 py-2 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Title</th>
+                          <th className="px-4 py-2 text-right text-[10px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">Thời gian còn lại</th>
                         </tr>
                       </thead>
                       <tbody>

@@ -123,72 +123,28 @@ export default function NewsPage() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-auto p-4 sm:p-6">
+      <main className="flex-1 overflow-auto p-3 sm:p-5">
         {!news ? (
-          <div className="max-w-3xl mx-auto">
-            <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+          <div className="w-full">
+            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
               <p className="text-sm text-gray-500">
                 Chưa có dữ liệu news. Đợi 1 vài giây để EA sync lần đầu, hoặc kiểm tra <code>InpUseGoldNewsFilter</code> đang bật trên EA.
               </p>
             </div>
           </div>
         ) : (
-          <div className="max-w-5xl mx-auto space-y-4">
-            {/* ======== STATUS BANNER ======== */}
-            <div className={`rounded-xl border p-5 shadow-sm
-              ${blocked ? 'bg-rose-50 border-rose-200' : 'bg-emerald-50 border-emerald-200'}`}>
-              <div className="flex items-start gap-4">
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0
-                  ${blocked ? 'bg-rose-500 text-white' : 'bg-emerald-500 text-white'}`}>
-                  {blocked ? '⏸' : '✓'}
-                </div>
-                <div className="min-w-0">
-                  <h2 className={`text-lg font-bold ${blocked ? 'text-rose-800' : 'text-emerald-800'}`}>
-                    {blocked ? 'Bot đang TRÁNH tin tức' : 'KHÔNG bị chặn bởi tin'}
-                  </h2>
-                  <p className={`text-sm mt-1 ${blocked ? 'text-rose-700' : 'text-emerald-700'}`}>
-                    {blocked
-                      ? `${currentBlock?.name || 'Tin'} — chặn từ ${fmtTime(currentBlock?.blockFrom)} đến ${fmtTime(currentBlock?.blockTo)}`
-                      : `Không có tin HIGH impact nào trong window ±${news.minutesBefore || 60} phút.`}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* ======== FILTER CONFIG ======== */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-              <h3 className="text-sm font-semibold text-gray-800 mb-3">Cấu hình News Filter (từ EA)</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-                <div>
-                  <div className="text-xs text-gray-500">Bật filter</div>
-                  <div className="font-semibold">{news.filterEnabled ? '✓ Bật' : '✗ Tắt'}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-gray-500">Chỉ HIGH impact</div>
-                  <div className="font-semibold">{news.highImpactOnly ? '✓ Yes' : 'All'}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-gray-500">Trước tin</div>
-                  <div className="font-semibold tabular-nums">{news.minutesBefore} phút</div>
-                </div>
-                <div>
-                  <div className="text-xs text-gray-500">Sau tin</div>
-                  <div className="font-semibold tabular-nums">{news.minutesAfter} phút</div>
-                </div>
-              </div>
-            </div>
-
+          <div className="w-full space-y-3">
             {/* ======== CURRENT / NEAREST ======== */}
             {currentBlock?.name && (
-              <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-                <h3 className="text-sm font-semibold text-gray-800 mb-3">
-                  {blocked ? 'Tin đang chặn hiện tại' : 'Tin gần nhất (đã qua / sắp tới)'}
+              <div className={`rounded-xl border p-4 sm:p-5 shadow-sm ${blocked ? 'bg-rose-50 border-rose-200' : 'bg-white border-gray-200'}`}>
+                <h3 className="text-xs sm:text-sm font-semibold text-gray-800 mb-3 uppercase tracking-wider">
+                  {blocked ? '⏸ Tin đang chặn hiện tại' : 'Tin gần nhất (đã qua / sắp tới)'}
                 </h3>
                 <div className="flex items-start gap-3 flex-wrap">
                   <ImpactBadge importance={currentBlock.importance} />
                   <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-gray-900">{currentBlock.name}</div>
-                    <div className="text-xs text-gray-500 mt-1 tabular-nums">
+                    <div className="font-semibold text-gray-900 text-sm sm:text-base break-words">{currentBlock.name}</div>
+                    <div className="text-xs text-gray-500 mt-1 tabular-nums leading-relaxed">
                       Giờ tin: <b className="text-gray-700">{fmtDateTime(currentBlock.time)}</b>
                       <br />
                       Window chặn: <b className="text-gray-700">{fmtTime(currentBlock.blockFrom)} → {fmtTime(currentBlock.blockTo)}</b>
@@ -200,40 +156,65 @@ export default function NewsPage() {
 
             {/* ======== UPCOMING ======== */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-              <div className="px-5 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-gray-800">Tin sắp tới (7 ngày, USD)</h3>
-                <span className="text-xs text-gray-500">{upcoming.length} tin</span>
+              <div className="px-4 sm:px-5 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between flex-wrap gap-2">
+                <h3 className="text-xs sm:text-sm font-semibold text-gray-800 uppercase tracking-wider">Tin sắp tới (7 ngày, USD)</h3>
+                <span className="text-xs text-gray-500 tabular-nums">{upcoming.length} tin</span>
               </div>
               {upcoming.length === 0 ? (
-                <div className="py-12 text-center text-gray-400 text-sm">Không có tin HIGH impact nào trong 7 ngày tới</div>
+                <div className="py-12 text-center text-gray-400 text-sm px-4">Không có tin HIGH impact nào trong 7 ngày tới</div>
               ) : (
-                <table className="w-full text-sm">
-                  <thead className="bg-white">
-                    <tr className="border-b border-gray-100">
-                      <th className="px-4 py-2 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Thời gian</th>
-                      <th className="px-4 py-2 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Impact</th>
-                      <th className="px-4 py-2 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Tên tin</th>
-                      <th className="px-4 py-2 text-right text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Còn</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <>
+                  {/* Desktop table */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-white">
+                        <tr className="border-b border-gray-100">
+                          <th className="px-4 py-2 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">Thời gian</th>
+                          <th className="px-4 py-2 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">Impact</th>
+                          <th className="px-4 py-2 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Tên tin</th>
+                          <th className="px-4 py-2 text-right text-[10px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">Còn</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {upcoming.map((n, i) => {
+                          const mins = minutesUntil(n.time)
+                          const isSoon = mins != null && mins >= 0 && mins <= (news.minutesBefore || 60)
+                          return (
+                            <tr key={i} className={`border-b border-gray-100 ${isSoon ? 'bg-rose-50/40' : ''}`}>
+                              <td className="px-4 py-2.5 text-xs tabular-nums text-gray-700 whitespace-nowrap">{fmtDateTime(n.time)}</td>
+                              <td className="px-4 py-2.5"><ImpactBadge importance={n.importance} /></td>
+                              <td className="px-4 py-2.5 text-xs text-gray-800">{n.name}</td>
+                              <td className={`px-4 py-2.5 text-right text-xs tabular-nums font-semibold whitespace-nowrap
+                                ${isSoon ? 'text-rose-600' : 'text-gray-400'}`}>
+                                {mins == null ? '—' : (mins < 0 ? 'đã qua' : humanDelta(mins))}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Mobile card list */}
+                  <div className="md:hidden divide-y divide-gray-100">
                     {upcoming.map((n, i) => {
                       const mins = minutesUntil(n.time)
                       const isSoon = mins != null && mins >= 0 && mins <= (news.minutesBefore || 60)
                       return (
-                        <tr key={i} className={`border-b border-gray-100 ${isSoon ? 'bg-rose-50/40' : ''}`}>
-                          <td className="px-4 py-2.5 text-xs tabular-nums text-gray-700">{fmtDateTime(n.time)}</td>
-                          <td className="px-4 py-2.5"><ImpactBadge importance={n.importance} /></td>
-                          <td className="px-4 py-2.5 text-xs text-gray-800">{n.name}</td>
-                          <td className={`px-4 py-2.5 text-right text-xs tabular-nums font-semibold
-                            ${isSoon ? 'text-rose-600' : 'text-gray-400'}`}>
-                            {mins == null ? '—' : (mins < 0 ? 'đã qua' : humanDelta(mins))}
-                          </td>
-                        </tr>
+                        <div key={i} className={`px-4 py-3 ${isSoon ? 'bg-rose-50/40' : ''}`}>
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <ImpactBadge importance={n.importance} />
+                            <span className={`text-xs tabular-nums font-semibold ${isSoon ? 'text-rose-600' : 'text-gray-400'}`}>
+                              {mins == null ? '—' : (mins < 0 ? 'đã qua' : humanDelta(mins))}
+                            </span>
+                          </div>
+                          <div className="text-sm text-gray-800 font-medium break-words">{n.name}</div>
+                          <div className="text-[11px] text-gray-500 tabular-nums mt-0.5">{fmtDateTime(n.time)}</div>
+                        </div>
                       )
                     })}
-                  </tbody>
-                </table>
+                  </div>
+                </>
               )}
             </div>
           </div>

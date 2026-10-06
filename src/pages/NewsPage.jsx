@@ -94,7 +94,11 @@ export default function NewsPage() {
   const updatedAgo = (() => {
     if (!snapshot?.updatedAt) return null
     try {
-      const diff = Math.floor((Date.now() - new Date(snapshot.updatedAt + 'Z').getTime()) / 1000)
+      // Server trả LocalDateTime (không timezone) — treat là giờ local
+      // của browser (giả định browser cùng tz với server). KHÔNG append 'Z'
+      // vì sẽ bị JS parse thành UTC → lệch múi giờ.
+      const diff = Math.floor((Date.now() - new Date(snapshot.updatedAt).getTime()) / 1000)
+      if (diff < 0) return 'vừa xong'
       if (diff < 60) return `${diff}s trước`
       if (diff < 3600) return `${Math.floor(diff / 60)}m trước`
       return `${Math.floor(diff / 3600)}h trước`

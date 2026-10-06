@@ -4,14 +4,15 @@ import SockJS from 'sockjs-client'
 import ConfirmModal from '../components/common/ConfirmModal'
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:9009'
-const GMT7 = 7 * 60 * 60 * 1000
 
 /* ================================================================
-   DATE HELPERS
+   DATE HELPERS — dùng raw MT5 server time, KHÔNG convert sang giờ VN.
+   Thời gian lưu DB là giờ broker gửi lên (ví dụ Exness ~ UTC+3).
+   "Today" mặc định = ngày hệ thống local user, user tự chỉnh nếu lệch.
    ================================================================ */
-const todayGmt7 = () => {
-  const d = new Date(Date.now() + GMT7)
-  return { y: d.getUTCFullYear(), m: d.getUTCMonth(), d: d.getUTCDate() }
+const todayLocal = () => {
+  const d = new Date()
+  return { y: d.getFullYear(), m: d.getMonth(), d: d.getDate() }
 }
 const dateKey = (y, m, d) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
 const parseKey = (k) => { const [y, m, d] = k.split('-').map(Number); return { y, m: m - 1, d } }
@@ -33,12 +34,25 @@ const fmtPrice = (v) => {
   const s = String(v); const dec = s.includes('.') ? s.split('.')[1].length : 2
   return fmtVN(v, Math.min(dec, 5))
 }
-const toGmt7 = (iso) => {
-  if (!iso) return null
-  try { const d = new Date(String(iso).replace(' ', 'T').replace(/(\.\d+)?$/, '') + 'Z'); return isNaN(d.getTime()) ? null : new Date(d.getTime() + GMT7) }
-  catch { return null }
+/** Lấy "HH:mm:ss" trực tiếp từ ISO string server trả về.
+ *  Không parse qua Date để tránh browser auto-apply timezone offset. */
+const fmtTime = (iso) => {
+  if (!iso) return '—'
+  const s = String(iso).replace(' ', 'T')
+  // "2026-10-06T14:15:13" → "14:15:13"
+  const m = s.match(/T(\d{2}:\d{2}:\d{2})/)
+  if (m) return m[1]
+  // Fallback: nếu định dạng "2026.10.06 14:15:13"
+  const m2 = s.match(/(\d{2}:\d{2}:\d{2})/)
+  return m2 ? m2[1] : '—'
 }
-const fmtTime = (iso) => { const d = toGmt7(iso); return d ? d.toISOString().substring(11, 19) : '—' }
+/** Lấy "yyyy-mm-dd" từ ISO string server. */
+const rawDateKey = (iso) => {
+  if (!iso) return null
+  const s = String(iso).replace(' ', 'T')
+  const m = s.match(/(\d{4})-(\d{2})-(\d{2})/)
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null
+}
 
 const calcNet = (t) => Number(t.profit || 0) + Number(t.commission || 0) + Number(t.swap || 0) + Number(t.fee || 0)
 const profitSign = (v) => v > 0.001 ? '+' : ''
@@ -122,7 +136,7 @@ function CalendarMonth({ year, month, startKey, endKey, hoverKey, onDayClick, on
   )
 }
 function DateRangePicker({ startKey, endKey, onChange }) {
-  const today = todayGmt7()
+  const today = todayLocal()
   const todayKey = dateKey(today.y, today.m, today.d)
   const [leftYear, setLeftYear] = useState(today.m === 0 ? today.y - 1 : today.y)
   const [leftMonth, setLeftMonth] = useState(today.m === 0 ? 11 : today.m - 1)
@@ -166,8 +180,8 @@ function DateRangePicker({ startKey, endKey, onChange }) {
           <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-gray-100">
             {[
               { label: 'Hôm nay', fn: () => { const k = dateKey(today.y, today.m, today.d); onChange(k, k); setOpen(false) } },
-              { label: '7 ngày', fn: () => { const from = new Date(Date.now() + GMT7 - 6 * 86400000); onChange(dateKey(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()), dateKey(today.y, today.m, today.d)); setOpen(false) } },
-              { label: '30 ngày', fn: () => { const from = new Date(Date.now() + GMT7 - 29 * 86400000); onChange(dateKey(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()), dateKey(today.y, today.m, today.d)); setOpen(false) } },
+              { label: '7 ngày', fn: () => { const from = new Date(Date.now() - 6 * 86400000); onChange(dateKey(from.getFullYear(), from.getMonth(), from.getDate()), dateKey(today.y, today.m, today.d)); setOpen(false) } },
+              { label: '30 ngày', fn: () => { const from = new Date(Date.now() - 29 * 86400000); onChange(dateKey(from.getFullYear(), from.getMonth(), from.getDate()), dateKey(today.y, today.m, today.d)); setOpen(false) } },
               { label: 'Tháng này', fn: () => { onChange(dateKey(today.y, today.m, 1), dateKey(today.y, today.m, today.d)); setOpen(false) } },
             ].map(({ label, fn }) => (
               <button key={label} onClick={fn} className="px-2.5 py-1 text-[11px] rounded-md bg-gray-100 hover:bg-violet-100 hover:text-violet-700 text-gray-600 font-medium">{label}</button>
@@ -403,7 +417,7 @@ export default function ExnessPage() {
   const [stopSaving, setStopSaving] = useState(false)
   const [stopError, setStopError] = useState(null)
 
-  const initToday = () => { const t = todayGmt7(); return dateKey(t.y, t.m, t.d) }
+  const initToday = () => { const t = todayLocal(); return dateKey(t.y, t.m, t.d) }
   const [dateStart, setDateStart] = useState(initToday)
   const [dateEnd, setDateEnd]     = useState(initToday)
 

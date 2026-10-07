@@ -219,7 +219,16 @@ function DateRangePicker({ startKey, endKey, onChange }) {
         <span>{label}</span>
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-2 z-50 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-4 w-72 md:w-auto md:min-w-[560px]">
+        <>
+          {/* Backdrop mờ chỉ hiện trên mobile để nhấn ngoài đóng picker */}
+          <div className="fixed inset-0 z-40 bg-black/30 md:hidden" onClick={() => setOpen(false)} />
+        <div
+          className="
+            fixed left-1/2 -translate-x-1/2 top-20 w-[calc(100vw-2rem)] max-w-sm
+            md:absolute md:left-auto md:translate-x-0 md:right-0 md:top-full md:mt-2 md:w-auto md:max-w-none md:min-w-[560px]
+            z-50 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-4
+          "
+        >
           <div className="flex items-center justify-between mb-3">
             <button onClick={prevMonth} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400">◀</button>
             <button onClick={nextMonth} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400">▶</button>
@@ -241,6 +250,7 @@ function DateRangePicker({ startKey, endKey, onChange }) {
             ))}
           </div>
         </div>
+        </>
       )}
     </div>
   )

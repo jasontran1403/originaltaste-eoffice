@@ -41,11 +41,14 @@ const fmtPrice = (v) => {
 const fmtTime = (iso) => {
   if (!iso) return '—'
   const s = String(iso).replace(' ', 'T')
-  const m = s.match(/T(\d{2}:\d{2}:\d{2})/)
-  if (m) return m[1]
-  const m2 = s.match(/(\d{2}:\d{2}:\d{2})/)
-  return m2 ? m2[1] : '—'
+  // Ưu tiên bắt sau chữ 'T'
+  let m = s.match(/T(\d{2}):(\d{2})(?::(\d{2}))?/)
+  if (!m) m = s.match(/(\d{2}):(\d{2})(?::(\d{2}))?/) // fallback: không có 'T'
+  if (!m) return '—'
+  const hh = m[1], mm = m[2], ss = m[3] ?? '00'
+  return `${hh}:${mm}:${ss}`
 }
+
 /** Lấy "yyyy-mm-dd" từ ISO string server. */
 const rawDateKey = (iso) => {
   if (!iso) return null

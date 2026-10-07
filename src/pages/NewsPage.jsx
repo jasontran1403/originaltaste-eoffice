@@ -1,14 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Client } from '@stomp/stompjs'
 import SockJS from 'sockjs-client'
+import DarkModeToggle from '../components/common/DarkModeToggle'
+import useDarkMode from '../hooks/useDarkMode'
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:9009'
 
-/* ============ raw time utilities (giờ server MT5, không convert) ============ */
+/* ============ raw time utilities ============ */
 const fmtTime = (iso) => {
   if (!iso) return '—'
   const s = String(iso).replace(' ', 'T')
-  // Chấp nhận cả HH:mm:ss hoặc HH:mm (Java LocalDateTime bỏ seconds nếu = 0)
   const m = s.match(/T(\d{2}:\d{2}(?::\d{2})?)/)
   if (m) return m[1].length === 5 ? m[1] + ':00' : m[1]
   const m2 = s.match(/(\d{2}:\d{2}(?::\d{2})?)/)
@@ -23,7 +24,6 @@ const fmtDate = (iso) => {
 }
 const fmtDateTime = (iso) => `${fmtDate(iso)} ${fmtTime(iso)}`
 
-// Thời điểm iso coi là UTC string (không có tz) — browser compare raw.
 const minutesUntil = (iso) => {
   if (!iso) return null
   try {
@@ -46,9 +46,9 @@ const humanDelta = (minutes) => {
 }
 
 const IMPACT_META = {
-  3: { label: 'HIGH',   dot: 'bg-rose-500',  text: 'text-rose-700',  bg: 'bg-rose-50',  border: 'border-rose-200' },
-  2: { label: 'MEDIUM', dot: 'bg-amber-400', text: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200' },
-  1: { label: 'LOW',    dot: 'bg-sky-400',   text: 'text-sky-700',   bg: 'bg-sky-50',   border: 'border-sky-200' },
+  3: { label: 'HIGH',   dot: 'bg-rose-500',  text: 'text-rose-700 dark:text-rose-400',  bg: 'bg-rose-50 dark:bg-rose-900/30',  border: 'border-rose-200 dark:border-rose-700' },
+  2: { label: 'MEDIUM', dot: 'bg-amber-400', text: 'text-amber-700 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/30', border: 'border-amber-200 dark:border-amber-700' },
+  1: { label: 'LOW',    dot: 'bg-sky-400',   text: 'text-sky-700 dark:text-sky-400',   bg: 'bg-sky-50 dark:bg-sky-900/30',   border: 'border-sky-200 dark:border-sky-700' },
 }
 function ImpactBadge({ importance }) {
   const m = IMPACT_META[importance] || IMPACT_META[1]
@@ -61,7 +61,8 @@ function ImpactBadge({ importance }) {
 }
 
 export default function NewsPage() {
-  const [snapshot, setSnapshot] = useState(null)  // { news, updatedAt, sourceLogin }
+  const [dark, toggleDark] = useDarkMode()
+  const [snapshot, setSnapshot] = useState(null)
   const [connected, setConnected] = useState(false)
   const clientRef = useRef(null)
 
@@ -96,9 +97,6 @@ export default function NewsPage() {
   const updatedAgo = (() => {
     if (!snapshot?.updatedAt) return null
     try {
-      // Server trả LocalDateTime (không timezone) — treat là giờ local
-      // của browser (giả định browser cùng tz với server). KHÔNG append 'Z'
-      // vì sẽ bị JS parse thành UTC → lệch múi giờ.
       const diff = Math.floor((Date.now() - new Date(snapshot.updatedAt).getTime()) / 1000)
       if (diff < 0) return 'vừa xong'
       if (diff < 60) return `${diff}s trước`
@@ -108,8 +106,8 @@ export default function NewsPage() {
   })()
 
   return (
-    <div className="min-h-[100dvh] md:h-[100dvh] bg-gray-50 text-gray-900 flex flex-col md:overflow-hidden">
-      <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 flex items-center justify-between gap-3 flex-wrap z-30 shadow-sm flex-shrink-0">
+    <div className="min-h-[100dvh] md:h-[100dvh] bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 flex flex-col md:overflow-hidden">
+      <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 sm:px-6 py-3 flex items-center justify-between gap-3 flex-wrap z-30 shadow-sm flex-shrink-0">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-rose-500 to-amber-500 flex items-center justify-center shadow-sm">
             <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -117,68 +115,66 @@ export default function NewsPage() {
             </svg>
           </div>
           <span className="text-base font-bold tracking-tight">News Filter Monitor</span>
-          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${connected ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-gray-100 text-gray-400 border border-gray-200'}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-500 animate-pulse' : 'bg-gray-300'}`} />
+          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${connected ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-700' : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 border border-gray-200 dark:border-gray-600'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-500 animate-pulse' : 'bg-gray-300 dark:bg-gray-600'}`} />
             {connected ? 'Live' : 'Offline'}
           </span>
-          <a href="/exness" className="text-xs text-violet-600 hover:underline">← Lệnh</a>
+          <a href="/exness" className="text-xs text-violet-600 dark:text-violet-400 hover:underline">← Lệnh</a>
         </div>
-        <div className="text-xs text-gray-500">
-          {snapshot?.sourceLogin && <>Nguồn: <b className="text-gray-700 tabular-nums">{snapshot.sourceLogin}</b></>}
-          {updatedAgo && <span className="ml-2">· cập nhật {updatedAgo}</span>}
+        <div className="flex items-center gap-3 flex-wrap text-xs text-gray-500 dark:text-gray-400">
+          {snapshot?.sourceLogin && <>Nguồn: <b className="text-gray-700 dark:text-gray-200 tabular-nums">{snapshot.sourceLogin}</b></>}
+          {updatedAgo && <span>· cập nhật {updatedAgo}</span>}
+          <DarkModeToggle dark={dark} onToggle={toggleDark} />
         </div>
       </header>
 
       <main className="flex-1 overflow-auto p-3 sm:p-5">
         {!news ? (
           <div className="w-full">
-            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-              <p className="text-sm text-gray-500">
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
                 Chưa có dữ liệu news. Đợi 1 vài giây để EA sync lần đầu, hoặc kiểm tra <code>InpUseGoldNewsFilter</code> đang bật trên EA.
               </p>
             </div>
           </div>
         ) : (
           <div className="w-full space-y-3">
-            {/* ======== CURRENT / NEAREST ======== */}
             {currentBlock?.name && (
-              <div className={`rounded-xl border p-4 sm:p-5 shadow-sm ${blocked ? 'bg-rose-50 border-rose-200' : 'bg-white border-gray-200'}`}>
-                <h3 className="text-xs sm:text-sm font-semibold text-gray-800 mb-3 uppercase tracking-wider">
+              <div className={`rounded-xl border p-4 sm:p-5 shadow-sm ${blocked ? 'bg-rose-50 dark:bg-rose-900/30 border-rose-200 dark:border-rose-700' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'}`}>
+                <h3 className="text-xs sm:text-sm font-semibold text-gray-800 dark:text-gray-100 mb-3 uppercase tracking-wider">
                   {blocked ? '⏸ Tin đang chặn hiện tại' : 'Tin gần nhất (đã qua / sắp tới)'}
                 </h3>
                 <div className="flex items-start gap-3 flex-wrap">
                   <ImpactBadge importance={currentBlock.importance} />
                   <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-gray-900 text-sm sm:text-base break-words">{currentBlock.name}</div>
-                    <div className="text-xs text-gray-500 mt-1 tabular-nums leading-relaxed">
-                      Giờ tin: <b className="text-gray-700">{fmtDateTime(currentBlock.time)}</b>
+                    <div className="font-semibold text-gray-900 dark:text-gray-100 text-sm sm:text-base break-words">{currentBlock.name}</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 tabular-nums leading-relaxed">
+                      Giờ tin: <b className="text-gray-700 dark:text-gray-200">{fmtDateTime(currentBlock.time)}</b>
                       <br />
-                      Window chặn: <b className="text-gray-700">{fmtTime(currentBlock.blockFrom)} → {fmtTime(currentBlock.blockTo)}</b>
+                      Window chặn: <b className="text-gray-700 dark:text-gray-200">{fmtTime(currentBlock.blockFrom)} → {fmtTime(currentBlock.blockTo)}</b>
                     </div>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* ======== UPCOMING ======== */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-              <div className="px-4 sm:px-5 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between flex-wrap gap-2">
-                <h3 className="text-xs sm:text-sm font-semibold text-gray-800 uppercase tracking-wider">Tin sắp tới (7 ngày, USD)</h3>
-                <span className="text-xs text-gray-500 tabular-nums">{upcoming.length} tin</span>
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+              <div className="px-4 sm:px-5 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex items-center justify-between flex-wrap gap-2">
+                <h3 className="text-xs sm:text-sm font-semibold text-gray-800 dark:text-gray-100 uppercase tracking-wider">Tin sắp tới (7 ngày, USD)</h3>
+                <span className="text-xs text-gray-500 dark:text-gray-400 tabular-nums">{upcoming.length} tin</span>
               </div>
               {upcoming.length === 0 ? (
-                <div className="py-12 text-center text-gray-400 text-sm px-4">Không có tin HIGH impact nào trong 7 ngày tới</div>
+                <div className="py-12 text-center text-gray-400 dark:text-gray-500 text-sm px-4">Không có tin HIGH impact nào trong 7 ngày tới</div>
               ) : (
                 <>
-                  {/* Desktop table */}
                   <div className="hidden md:block overflow-x-auto">
                     <table className="w-full text-sm">
-                      <thead className="bg-white">
-                        <tr className="border-b border-gray-100">
-                          <th className="px-4 py-2 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">Thời gian lên tin</th>
-                          <th className="px-4 py-2 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">Mức độ ảnh hưởng</th>
-                          <th className="px-4 py-2 text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Title</th>
-                          <th className="px-4 py-2 text-right text-[10px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">Thời gian còn lại</th>
+                      <thead className="bg-white dark:bg-gray-800">
+                        <tr className="border-b border-gray-100 dark:border-gray-700">
+                          <th className="px-4 py-2 text-left text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider whitespace-nowrap">Thời gian lên tin</th>
+                          <th className="px-4 py-2 text-left text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider whitespace-nowrap">Mức độ ảnh hưởng</th>
+                          <th className="px-4 py-2 text-left text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Title</th>
+                          <th className="px-4 py-2 text-right text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider whitespace-nowrap">Thời gian còn lại</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -186,12 +182,12 @@ export default function NewsPage() {
                           const mins = minutesUntil(n.time)
                           const isSoon = mins != null && mins >= 0 && mins <= (news.minutesBefore || 60)
                           return (
-                            <tr key={i} className={`border-b border-gray-100 ${isSoon ? 'bg-rose-50/40' : ''}`}>
-                              <td className="px-4 py-2.5 text-xs tabular-nums text-gray-700 whitespace-nowrap">{fmtDateTime(n.time)}</td>
+                            <tr key={i} className={`border-b border-gray-100 dark:border-gray-700 ${isSoon ? 'bg-rose-50/40 dark:bg-rose-900/20' : ''}`}>
+                              <td className="px-4 py-2.5 text-xs tabular-nums text-gray-700 dark:text-gray-200 whitespace-nowrap">{fmtDateTime(n.time)}</td>
                               <td className="px-4 py-2.5"><ImpactBadge importance={n.importance} /></td>
-                              <td className="px-4 py-2.5 text-xs text-gray-800">{n.name}</td>
+                              <td className="px-4 py-2.5 text-xs text-gray-800 dark:text-gray-100">{n.name}</td>
                               <td className={`px-4 py-2.5 text-right text-xs tabular-nums font-semibold whitespace-nowrap
-                                ${isSoon ? 'text-rose-600' : 'text-gray-400'}`}>
+                                ${isSoon ? 'text-rose-600 dark:text-rose-400' : 'text-gray-400 dark:text-gray-500'}`}>
                                 {mins == null ? '—' : (mins < 0 ? 'đã qua' : humanDelta(mins))}
                               </td>
                             </tr>
@@ -201,21 +197,20 @@ export default function NewsPage() {
                     </table>
                   </div>
 
-                  {/* Mobile card list */}
-                  <div className="md:hidden divide-y divide-gray-100">
+                  <div className="md:hidden divide-y divide-gray-100 dark:divide-gray-700">
                     {upcoming.map((n, i) => {
                       const mins = minutesUntil(n.time)
                       const isSoon = mins != null && mins >= 0 && mins <= (news.minutesBefore || 60)
                       return (
-                        <div key={i} className={`px-4 py-3 ${isSoon ? 'bg-rose-50/40' : ''}`}>
+                        <div key={i} className={`px-4 py-3 ${isSoon ? 'bg-rose-50/40 dark:bg-rose-900/20' : ''}`}>
                           <div className="flex items-start justify-between gap-2 mb-1">
                             <ImpactBadge importance={n.importance} />
-                            <span className={`text-xs tabular-nums font-semibold ${isSoon ? 'text-rose-600' : 'text-gray-400'}`}>
+                            <span className={`text-xs tabular-nums font-semibold ${isSoon ? 'text-rose-600 dark:text-rose-400' : 'text-gray-400 dark:text-gray-500'}`}>
                               {mins == null ? '—' : (mins < 0 ? 'đã qua' : humanDelta(mins))}
                             </span>
                           </div>
-                          <div className="text-sm text-gray-800 font-medium break-words">{n.name}</div>
-                          <div className="text-[11px] text-gray-500 tabular-nums mt-0.5">{fmtDateTime(n.time)}</div>
+                          <div className="text-sm text-gray-800 dark:text-gray-100 font-medium break-words">{n.name}</div>
+                          <div className="text-[11px] text-gray-500 dark:text-gray-400 tabular-nums mt-0.5">{fmtDateTime(n.time)}</div>
                         </div>
                       )
                     })}

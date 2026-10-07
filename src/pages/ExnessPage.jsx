@@ -2,15 +2,15 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Client } from '@stomp/stompjs'
 import SockJS from 'sockjs-client'
 import ConfirmModal from '../components/common/ConfirmModal'
+import DarkModeToggle from '../components/common/DarkModeToggle'
+import useDarkMode from '../hooks/useDarkMode'
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:9009'
 
 const STORAGE_KEY_ACCOUNT = 'mt5_selected_account'
 
 /* ================================================================
-   DATE HELPERS — dùng raw MT5 server time, KHÔNG convert sang giờ VN.
-   Thời gian lưu DB là giờ broker gửi lên (ví dụ Exness ~ UTC+3).
-   "Today" mặc định = ngày hệ thống local user, user tự chỉnh nếu lệch.
+   DATE HELPERS
    ================================================================ */
 const todayLocal = () => {
   const d = new Date()
@@ -36,20 +36,15 @@ const fmtPrice = (v) => {
   const s = String(v); const dec = s.includes('.') ? s.split('.')[1].length : 2
   return fmtVN(v, Math.min(dec, 5))
 }
-/** Lấy "HH:mm:ss" trực tiếp từ ISO string server trả về.
- *  Không parse qua Date để tránh browser auto-apply timezone offset. */
 const fmtTime = (iso) => {
   if (!iso) return '—'
   const s = String(iso).replace(' ', 'T')
-  // Ưu tiên bắt sau chữ 'T'
   let m = s.match(/T(\d{2}):(\d{2})(?::(\d{2}))?/)
-  if (!m) m = s.match(/(\d{2}):(\d{2})(?::(\d{2}))?/) // fallback: không có 'T'
+  if (!m) m = s.match(/(\d{2}):(\d{2})(?::(\d{2}))?/)
   if (!m) return '—'
   const hh = m[1], mm = m[2], ss = m[3] ?? '00'
   return `${hh}:${mm}:${ss}`
 }
-
-/** Lấy "yyyy-mm-dd" từ ISO string server. */
 const rawDateKey = (iso) => {
   if (!iso) return null
   const s = String(iso).replace(' ', 'T')
@@ -59,7 +54,7 @@ const rawDateKey = (iso) => {
 
 const calcNet = (t) => Number(t.profit || 0) + Number(t.commission || 0) + Number(t.swap || 0) + Number(t.fee || 0)
 const profitSign = (v) => v > 0.001 ? '+' : ''
-const profitClass = (v) => v > 0.001 ? 'text-emerald-600' : v < -0.001 ? 'text-rose-500' : 'text-gray-400'
+const profitClass = (v) => v > 0.001 ? 'text-emerald-600 dark:text-emerald-400' : v < -0.001 ? 'text-rose-500 dark:text-rose-400' : 'text-gray-400 dark:text-gray-500'
 
 /* ================================================================
    PULSE
@@ -81,12 +76,12 @@ function AnimatedValue({ value, className = '', pulseKey, direction }) {
 }
 
 /* ================================================================
-   STATE BADGE / BUTTON
+   STATE BADGE
    ================================================================ */
 const STATE_META = {
-  RUNNING: { label: 'ĐANG CHẠY', dot: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', pulse: true },
-  PAUSED: { label: 'TẠM DỪNG', dot: 'bg-amber-400', text: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', pulse: false },
-  STOPPING: { label: 'ĐÃ TẮT', dot: 'bg-rose-500', text: 'text-rose-700', bg: 'bg-rose-50', border: 'border-rose-200', pulse: true },
+  RUNNING: { label: 'ĐANG CHẠY', dot: 'bg-emerald-500', text: 'text-emerald-700 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/30', border: 'border-emerald-200 dark:border-emerald-700', pulse: true },
+  PAUSED: { label: 'TẠM DỪNG', dot: 'bg-amber-400', text: 'text-amber-700 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/30', border: 'border-amber-200 dark:border-amber-700', pulse: false },
+  STOPPING: { label: 'ĐÃ TẮT', dot: 'bg-rose-500', text: 'text-rose-700 dark:text-rose-400', bg: 'bg-rose-50 dark:bg-rose-900/30', border: 'border-rose-200 dark:border-rose-700', pulse: true },
 }
 function StateBadge({ state }) {
   const m = STATE_META[state] || STATE_META.PAUSED
@@ -111,9 +106,9 @@ function CalendarMonth({ year, month, startKey, endKey, hoverKey, onDayClick, on
   for (let d = 1; d <= days; d++) cells.push(d)
   return (
     <div className="select-none">
-      <div className="text-center text-sm font-semibold text-gray-700 mb-2">{MONTHS_VI[month]} {year}</div>
+      <div className="text-center text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">{MONTHS_VI[month]} {year}</div>
       <div className="grid grid-cols-7 mb-1">
-        {DAYS_VI.map(d => <div key={d} className="text-center text-[10px] font-medium text-gray-400 py-0.5">{d}</div>)}
+        {DAYS_VI.map(d => <div key={d} className="text-center text-[10px] font-medium text-gray-400 dark:text-gray-500 py-0.5">{d}</div>)}
       </div>
       <div className="grid grid-cols-7 gap-y-0.5">
         {cells.map((d, i) => {
@@ -129,8 +124,8 @@ function CalendarMonth({ year, month, startKey, endKey, hoverKey, onDayClick, on
             <button key={k} onClick={() => onDayClick(k)} onMouseEnter={() => onDayHover(k)}
               className={`relative h-8 w-full text-xs rounded-md font-medium transition-colors
                 ${isEdge ? 'bg-violet-600 text-white z-10' : ''}
-                ${!isEdge && (inRange || inHover) ? 'bg-violet-100 text-violet-700' : ''}
-                ${!isEdge && !inRange && !inHover ? 'text-gray-700 hover:bg-gray-100' : ''}
+                ${!isEdge && (inRange || inHover) ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300' : ''}
+                ${!isEdge && !inRange && !inHover ? 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700' : ''}
                 ${isToday && !isEdge ? 'ring-1 ring-violet-400' : ''}`}>{d}</button>
           )
         })}
@@ -164,30 +159,30 @@ function DateRangePicker({ startKey, endKey, onChange }) {
   return (
     <div ref={ref} className="relative">
       <button onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-xs font-medium text-gray-700 shadow-sm transition-colors whitespace-nowrap">
-        <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-xs font-medium text-gray-700 dark:text-gray-200 shadow-sm transition-colors whitespace-nowrap">
+        <svg className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
         </svg>
         <span>{label}</span>
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-2 z-50 bg-white rounded-xl shadow-xl border border-gray-200 p-4" style={{ minWidth: 560 }}>
+        <div className="absolute right-0 top-full mt-2 z-50 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-4" style={{ minWidth: 560 }}>
           <div className="flex items-center justify-between mb-3">
-            <button onClick={prevMonth} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">◀</button>
-            <button onClick={nextMonth} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">▶</button>
+            <button onClick={prevMonth} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400">◀</button>
+            <button onClick={nextMonth} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400">▶</button>
           </div>
           <div className="grid grid-cols-2 gap-6">
             <CalendarMonth year={leftYear} month={leftMonth} startKey={startKey} endKey={endKey} hoverKey={hoverKey} todayKey={todayKey} onDayClick={handleDayClick} onDayHover={setHoverKey} />
             <CalendarMonth year={rightYear} month={rightMonth} startKey={startKey} endKey={endKey} hoverKey={hoverKey} todayKey={todayKey} onDayClick={handleDayClick} onDayHover={setHoverKey} />
           </div>
-          <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-gray-100">
+          <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
             {[
               { label: 'Hôm nay', fn: () => { const k = dateKey(today.y, today.m, today.d); onChange(k, k); setOpen(false) } },
               { label: '7 ngày', fn: () => { const from = new Date(Date.now() - 6 * 86400000); onChange(dateKey(from.getFullYear(), from.getMonth(), from.getDate()), dateKey(today.y, today.m, today.d)); setOpen(false) } },
               { label: '30 ngày', fn: () => { const from = new Date(Date.now() - 29 * 86400000); onChange(dateKey(from.getFullYear(), from.getMonth(), from.getDate()), dateKey(today.y, today.m, today.d)); setOpen(false) } },
               { label: 'Tháng này', fn: () => { onChange(dateKey(today.y, today.m, 1), dateKey(today.y, today.m, today.d)); setOpen(false) } },
             ].map(({ label, fn }) => (
-              <button key={label} onClick={fn} className="px-2.5 py-1 text-[11px] rounded-md bg-gray-100 hover:bg-violet-100 hover:text-violet-700 text-gray-600 font-medium">{label}</button>
+              <button key={label} onClick={fn} className="px-2.5 py-1 text-[11px] rounded-md bg-gray-100 dark:bg-gray-700 hover:bg-violet-100 dark:hover:bg-violet-900/50 hover:text-violet-700 dark:hover:text-violet-300 text-gray-600 dark:text-gray-300 font-medium">{label}</button>
             ))}
           </div>
         </div>
@@ -248,14 +243,14 @@ function LotEditModal({ open, current, canEdit, saving, error, onClose, onSave }
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4" onClick={saving ? undefined : onClose}>
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-      <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+      <div className="relative w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="p-5">
-          <h3 className="text-base font-bold text-gray-900">Sửa lot</h3>
+          <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">Sửa lot</h3>
           {!canEdit ? (
-            <p className="mt-2 text-sm text-rose-600">Bot đang <b>CHẠY</b> — hãy ngưng hoặc tắt bot trước khi sửa lot.</p>
+            <p className="mt-2 text-sm text-rose-600 dark:text-rose-400">Bot đang <b>CHẠY</b> — hãy ngưng hoặc tắt bot trước khi sửa lot.</p>
           ) : (
             <>
-              <p className="mt-1 text-sm text-gray-500">
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 Nhập lot mới. Tối thiểu <code>{LOT_MIN}</code>, tối đa 2 số sau dấu thập phân. Dùng dấu <code>.</code> hoặc <code>,</code> đều được.
               </p>
               <input
@@ -268,15 +263,15 @@ function LotEditModal({ open, current, canEdit, saving, error, onClose, onSave }
                 onFocus={e => e.target.select()}
                 onClick={e => e.target.select()}
                 placeholder="0.01"
-                className={`mt-3 w-full h-11 px-3 rounded-lg border text-base tabular-nums focus:outline-none focus:ring-2
-                  ${invalid && text ? 'border-rose-300 focus:ring-rose-200' : 'border-gray-300 focus:ring-violet-200'}`}
+                className={`mt-3 w-full h-11 px-3 rounded-lg border text-base tabular-nums bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2
+                  ${invalid && text ? 'border-rose-300 dark:border-rose-500 focus:ring-rose-200' : 'border-gray-300 dark:border-gray-600 focus:ring-violet-200'}`}
               />
-              {errMsg && <p className="mt-2 text-sm text-rose-600">{errMsg}</p>}
+              {errMsg && <p className="mt-2 text-sm text-rose-600 dark:text-rose-400">{errMsg}</p>}
             </>
           )}
         </div>
         <div className="flex gap-2 p-4 pt-0">
-          <button onClick={onClose} disabled={saving} className="flex-1 h-11 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50">Hủy</button>
+          <button onClick={onClose} disabled={saving} className="flex-1 h-11 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm font-semibold text-gray-600 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50">Hủy</button>
           <button onClick={() => onSave(number)} disabled={saving || invalid || !canEdit}
             className="flex-1 h-11 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold disabled:opacity-50">
             {saving ? 'Đang lưu...' : 'Lưu'}
@@ -297,24 +292,24 @@ function StopPasscodeModal({ open, saving, error, onClose, onConfirm }) {
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4" onClick={saving ? undefined : onClose}>
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-      <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+      <div className="relative w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="p-5">
           <div className="flex items-start gap-3">
-            <div className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-lg bg-rose-100 text-rose-600">⚠</div>
+            <div className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-lg bg-rose-100 dark:bg-rose-900/40 text-rose-600 dark:text-rose-400">⚠</div>
             <div className="min-w-0">
-              <h3 className="text-base font-bold text-gray-900">Tắt bot</h3>
-              <p className="mt-1 text-sm text-gray-500">Bot sẽ chuyển sang trạng thái TẮT, không mở lệnh mới và sẽ <b>đóng hết lệnh đang mở</b>. Nhập passcode để xác nhận.</p>
+              <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">Tắt bot</h3>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Bot sẽ chuyển sang trạng thái TẮT, không mở lệnh mới và sẽ <b>đóng hết lệnh đang mở</b>. Nhập passcode để xác nhận.</p>
             </div>
           </div>
           <input type="password" value={pass} autoFocus
             onChange={e => setPass(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && pass) onConfirm(pass) }}
             placeholder="Passcode"
-            className="mt-4 w-full h-11 px-3 rounded-lg border border-gray-300 text-base tracking-widest focus:outline-none focus:ring-2 focus:ring-rose-200" />
-          {error && <p className="mt-2 text-sm text-rose-600">{error}</p>}
+            className="mt-4 w-full h-11 px-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-base tracking-widest focus:outline-none focus:ring-2 focus:ring-rose-200" />
+          {error && <p className="mt-2 text-sm text-rose-600 dark:text-rose-400">{error}</p>}
         </div>
         <div className="flex gap-2 p-4 pt-0">
-          <button onClick={onClose} disabled={saving} className="flex-1 h-11 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50">Hủy</button>
+          <button onClick={onClose} disabled={saving} className="flex-1 h-11 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm font-semibold text-gray-600 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50">Hủy</button>
           <button onClick={() => onConfirm(pass)} disabled={saving || !pass}
             className="flex-1 h-11 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm font-semibold disabled:opacity-50">
             {saving ? 'Đang tắt...' : 'Xác nhận tắt'}
@@ -330,14 +325,14 @@ function StopPasscodeModal({ open, saving, error, onClose, onConfirm }) {
    ================================================================ */
 function TableHead({ cols }) {
   return (
-    <thead className="sticky top-0 z-10 bg-white">
-      <tr className="border-b border-gray-100">
+    <thead className="sticky top-0 z-10 bg-white dark:bg-gray-800">
+      <tr className="border-b border-gray-100 dark:border-gray-700">
         {cols.map((c, i) => {
           const label = typeof c === 'string' ? c : c.label
           const hideM = typeof c === 'object' && c.hideOnMobile
           return (
             <th key={label}
-              className={`px-3 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap
+              className={`px-3 py-2 text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider whitespace-nowrap
                 ${i >= 3 ? 'text-right' : 'text-left'} ${hideM ? 'hidden md:table-cell' : ''}`}>{label}</th>
           )
         })}
@@ -349,16 +344,16 @@ function TableHead({ cols }) {
 function OpenRow({ pos, isNew }) {
   const pl = Number(pos.profit || 0)
   return (
-    <tr className={`border-b border-gray-100 ${isNew ? 'row-enter' : 'hover:bg-blue-50/40'}`}>
-      <td className="px-3 py-2.5 text-[11px] text-gray-400 tabular-nums font-mono">#{pos.ticket}</td>
+    <tr className={`border-b border-gray-100 dark:border-gray-700 ${isNew ? 'row-enter' : 'hover:bg-blue-50/40 dark:hover:bg-blue-900/20'}`}>
+      <td className="px-3 py-2.5 text-[11px] text-gray-400 dark:text-gray-500 tabular-nums font-mono">#{pos.ticket}</td>
       <td className="px-3 py-2.5 hidden md:table-cell">
-        <span className={`text-xs font-bold ${pos.direction === 'BUY' ? 'text-emerald-600' : 'text-rose-500'}`}>{pos.direction}</span>
+        <span className={`text-xs font-bold ${pos.direction === 'BUY' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'}`}>{pos.direction}</span>
       </td>
-      <td className="px-3 py-2.5 text-xs text-gray-700 font-medium">{pos.symbol || '—'}</td>
-      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-700">{fmtVN(pos.volume, 2)}</td>
-      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-600">{fmtPrice(pos.openPrice)}</td>
+      <td className="px-3 py-2.5 text-xs text-gray-700 dark:text-gray-200 font-medium">{pos.symbol || '—'}</td>
+      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-700 dark:text-gray-200">{fmtVN(pos.volume, 2)}</td>
+      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-600 dark:text-gray-300">{fmtPrice(pos.openPrice)}</td>
       <td className={`px-3 py-2.5 text-right text-xs tabular-nums font-semibold ${profitClass(pl)}`}>{`${profitSign(pl)}${fmtVN(pl)}`}</td>
-      <td className="px-3 py-2.5 text-right text-xs text-gray-400 tabular-nums hidden md:table-cell">{fmtTime(pos.openTime)}</td>
+      <td className="px-3 py-2.5 text-right text-xs text-gray-400 dark:text-gray-500 tabular-nums hidden md:table-cell">{fmtTime(pos.openTime)}</td>
     </tr>
   )
 }
@@ -367,17 +362,17 @@ function ClosedRow({ trade: t }) {
   const dir = t.direction === 'BUY'
   const net = calcNet(t)
   return (
-    <tr className="border-b border-gray-100 hover:bg-amber-50/40">
-      <td className="px-3 py-2.5 text-[11px] text-gray-400 tabular-nums font-mono">#{t.ticket}</td>
+    <tr className="border-b border-gray-100 dark:border-gray-700 hover:bg-amber-50/40 dark:hover:bg-amber-900/20">
+      <td className="px-3 py-2.5 text-[11px] text-gray-400 dark:text-gray-500 tabular-nums font-mono">#{t.ticket}</td>
       <td className="px-3 py-2.5 hidden md:table-cell">
-        <span className={`text-xs font-bold ${dir ? 'text-emerald-600' : 'text-rose-500'}`}>{t.direction}</span>
+        <span className={`text-xs font-bold ${dir ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'}`}>{t.direction}</span>
       </td>
-      <td className="px-3 py-2.5 text-xs text-gray-700 font-medium">{t.symbol || '—'}</td>
-      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-700">{fmtVN(t.volume, 2)}</td>
-      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-500 hidden md:table-cell">{fmtPrice(t.openPrice)}</td>
-      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-500">{fmtPrice(t.closePrice)}</td>
+      <td className="px-3 py-2.5 text-xs text-gray-700 dark:text-gray-200 font-medium">{t.symbol || '—'}</td>
+      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-700 dark:text-gray-200">{fmtVN(t.volume, 2)}</td>
+      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-500 dark:text-gray-400 hidden md:table-cell">{fmtPrice(t.openPrice)}</td>
+      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-500 dark:text-gray-400">{fmtPrice(t.closePrice)}</td>
       <td className={`px-3 py-2.5 text-right text-xs tabular-nums font-semibold ${profitClass(net)}`}>{`${profitSign(net)}${fmtVN(net)}`}</td>
-      <td className="px-3 py-2.5 text-right text-xs text-gray-400 tabular-nums hidden md:table-cell">{fmtTime(t.closeTime)}</td>
+      <td className="px-3 py-2.5 text-right text-xs text-gray-400 dark:text-gray-500 tabular-nums hidden md:table-cell">{fmtTime(t.closeTime)}</td>
     </tr>
   )
 }
@@ -386,17 +381,18 @@ function ClosedRow({ trade: t }) {
    MAIN
    ================================================================ */
 export default function ExnessPage() {
+  const [dark, toggleDark] = useDarkMode()
+
   const [accounts, setAccounts] = useState([])
   const [selectedId, setSelectedId] = useState(null)
-  const [account, setAccount] = useState(null)       // detail (có openPositions)
+  const [account, setAccount] = useState(null)
   const [closedList, setClosedList] = useState([])
   const [closedTotals, setClosedTotals] = useState({ lot: 0, profit: 0 })
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [connected, setConnected] = useState(false)
   const [toast, setToast] = useState(null)
 
-  // Modal states
-  const [confirmAction, setConfirmAction] = useState(null) // { type: 'RUN'|'PAUSE', ... }
+  const [confirmAction, setConfirmAction] = useState(null)
   const [actionBusy, setActionBusy] = useState(false)
   const [lotOpen, setLotOpen] = useState(false)
   const [lotSaving, setLotSaving] = useState(false)
@@ -405,7 +401,6 @@ export default function ExnessPage() {
   const [stopSaving, setStopSaving] = useState(false)
   const [stopError, setStopError] = useState(null)
 
-  // Cờ báo đã fetch xong danh sách account lần đầu (tránh nháy UI "Chưa có tài khoản")
   const [booting, setBooting] = useState(true)
 
   const initToday = () => { const t = todayLocal(); return dateKey(t.y, t.m, t.d) }
@@ -418,24 +413,18 @@ export default function ExnessPage() {
     setToast(msg); setTimeout(() => setToast(null), ms)
   }, [])
 
-  // ---- Chọn account ưu tiên: đang chọn → localStorage → "Gold 1" → đầu tiên ----
   const pickAccountId = useCallback((items, prev) => {
     if (!items || items.length === 0) return null
-    // 1) Nếu đang có selectedId và vẫn tồn tại trong list mới → giữ nguyên
     if (prev && items.some(a => a.id === prev)) return prev
-    // 2) Đọc localStorage (chỉ khi chưa có prev — lần đầu mount / F5)
     if (!prev) {
       const saved = Number(localStorage.getItem(STORAGE_KEY_ACCOUNT))
       if (saved && items.some(a => a.id === saved)) return saved
     }
-    // 3) Ưu tiên tài khoản tên "Gold 1" (case-insensitive, trim)
     const gold1 = items.find(a => (a.name || '').trim().toLowerCase() === 'gold 1')
     if (gold1) return gold1.id
-    // 4) Fallback: tài khoản đầu tiên
     return items[0].id
   }, [])
 
-  // ---- Load account list ----
   const refreshAccounts = useCallback(() => {
     return fetch(`${BASE}/api/public/mt5-bot/accounts`)
       .then(r => r.json())
@@ -454,14 +443,12 @@ export default function ExnessPage() {
     return () => clearInterval(t)
   }, [refreshAccounts])
 
-  // ---- Persist selectedId vào localStorage để F5 không nhảy tài khoản ----
   useEffect(() => {
     if (selectedId != null) {
       localStorage.setItem(STORAGE_KEY_ACCOUNT, String(selectedId))
     }
   }, [selectedId])
 
-  // ---- Load account detail ----
   const refreshAccount = useCallback(async (id) => {
     if (!id) return
     try {
@@ -472,7 +459,6 @@ export default function ExnessPage() {
   }, [])
   useEffect(() => { if (selectedId) refreshAccount(selectedId) }, [selectedId, refreshAccount])
 
-  // ---- Load history ----
   const refreshHistory = useCallback(async (id, from, to) => {
     if (!id || !from || !to) return
     setLoadingHistory(true)
@@ -490,7 +476,6 @@ export default function ExnessPage() {
     if (selectedId && dateStart && dateEnd) refreshHistory(selectedId, dateStart, dateEnd)
   }, [selectedId, dateStart, dateEnd, refreshHistory])
 
-  // ---- WebSocket ----
   useEffect(() => {
     if (!selectedId) return
     const client = new Client({
@@ -514,7 +499,6 @@ export default function ExnessPage() {
     return () => client.deactivate()
   }, [selectedId, refreshAccounts])
 
-  // reload history khi latest ticket tăng
   const lastTicketRef = useRef(0)
   useEffect(() => {
     if (!account) return
@@ -524,7 +508,6 @@ export default function ExnessPage() {
     }
   }, [account, selectedId, dateStart, dateEnd, refreshHistory])
 
-  // ---- Derived ----
   const openPositions = account?.openPositions || []
   const openLot = useMemo(() => openPositions.reduce((s, p) => s + Number(p.volume || 0), 0), [openPositions])
   const openPnL = useMemo(() => openPositions.reduce((s, p) => s + Number(p.profit || 0), 0), [openPositions])
@@ -534,7 +517,6 @@ export default function ExnessPage() {
   const equityPulse = useValuePulse(equity)
   const state = account?.state || 'PAUSED'
 
-  // ---- Actions ----
   const doSetState = useCallback(async (next) => {
     setActionBusy(true)
     try {
@@ -602,8 +584,8 @@ export default function ExnessPage() {
   ]
 
   return (
-    <div className="min-h-[100dvh] md:h-[100dvh] bg-gray-50 text-gray-900 flex flex-col md:overflow-hidden">
-      <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 flex items-center justify-between gap-3 flex-wrap z-30 shadow-sm flex-shrink-0">
+    <div className="min-h-[100dvh] md:h-[100dvh] bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 flex flex-col md:overflow-hidden">
+      <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 sm:px-6 py-3 flex items-center justify-between gap-3 flex-wrap z-30 shadow-sm flex-shrink-0">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 to-blue-600 flex items-center justify-center shadow-sm">
             <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -611,18 +593,18 @@ export default function ExnessPage() {
             </svg>
           </div>
           <span className="text-base font-bold tracking-tight">MT5 Bot Monitor</span>
-          <a href="/news" className="text-xs text-rose-600 hover:underline font-medium">📰 Tin</a>
-          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${connected ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-gray-100 text-gray-400 border border-gray-200'}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-500 animate-pulse' : 'bg-gray-300'}`} />
+          <a href="/news" className="text-xs text-rose-600 dark:text-rose-400 hover:underline font-medium">📰 Tin</a>
+          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${connected ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-700' : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 border border-gray-200 dark:border-gray-600'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-emerald-500 animate-pulse' : 'bg-gray-300 dark:bg-gray-600'}`} />
             {connected ? 'Live' : 'Offline'}
           </span>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {accounts.length > 0 && (
             <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500 hidden sm:inline">Tài khoản</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400 hidden sm:inline">Tài khoản</span>
               <select value={selectedId || ''} onChange={e => setSelectedId(Number(e.target.value))}
-                className="bg-white border border-gray-300 rounded-lg px-3 py-1.5 pr-8 text-sm text-gray-700 focus:outline-none focus:border-violet-500 cursor-pointer shadow-sm">
+                className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 pr-8 text-sm text-gray-700 dark:text-gray-200 focus:outline-none focus:border-violet-500 cursor-pointer shadow-sm">
                 {accounts.map(a => (
                   <option key={a.id} value={a.id}>
                     {a.name ? `${a.name} · ${a.login}` : a.login} ({a.server})
@@ -631,33 +613,33 @@ export default function ExnessPage() {
               </select>
             </div>
           )}
+          <DarkModeToggle dark={dark} onToggle={toggleDark} />
         </div>
       </header>
 
-      {/* ===== Account summary bar ===== */}
       {account && (
-        <section className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 flex items-center justify-between gap-3 flex-wrap">
+        <section className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 sm:px-6 py-3 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3 flex-wrap">
             <StateBadge state={state} />
             <div className="text-sm">
-              <span className="text-gray-500 mr-1">Login:</span><b className="tabular-nums">{account.login}</b>
-              {account.name && <span className="ml-2 text-gray-500">· {account.name}</span>}
-              <span className="ml-2 text-gray-400 text-xs">· {account.server}</span>
+              <span className="text-gray-500 dark:text-gray-400 mr-1">Login:</span><b className="tabular-nums">{account.login}</b>
+              {account.name && <span className="ml-2 text-gray-500 dark:text-gray-400">· {account.name}</span>}
+              <span className="ml-2 text-gray-400 dark:text-gray-500 text-xs">· {account.server}</span>
             </div>
           </div>
-          <div className="flex items-center gap-4 text-xs text-gray-500 flex-wrap tabular-nums">
-            <span>Lot cấu hình: <b className="text-gray-800">{fmtVN(currentLot, 2)}</b></span>
-            {account.balance != null && <span>Balance: <b className="text-gray-800">{fmtVN(account.balance)}</b></span>}
+          <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400 flex-wrap tabular-nums">
+            <span>Lot cấu hình: <b className="text-gray-800 dark:text-gray-100">{fmtVN(currentLot, 2)}</b></span>
+            {account.balance != null && <span>Balance: <b className="text-gray-800 dark:text-gray-100">{fmtVN(account.balance)}</b></span>}
             {equity != null && (
               <span>Equity:{' '}
-                <AnimatedValue value={fmtVN(equity)} className={`${equity >= (account.balance || equity) ? 'text-emerald-600' : 'text-rose-500'}`}
+                <AnimatedValue value={fmtVN(equity)} className={`${equity >= (account.balance || equity) ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'}`}
                   pulseKey={equityPulse.key} direction={equityPulse.dir} />
               </span>
             )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <button onClick={requestEditLot} disabled={actionBusy}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50">
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50">
               ⚙ Sửa lot
             </button>
             {state === 'RUNNING' ? (
@@ -690,32 +672,32 @@ export default function ExnessPage() {
       <main className="flex-1 md:min-h-0 flex flex-col p-4 sm:p-5 gap-4">
         {booting ? (
           <div className="flex-1 flex items-center justify-center">
-            <p className="text-gray-400 text-sm">Đang tải tài khoản...</p>
+            <p className="text-gray-400 dark:text-gray-500 text-sm">Đang tải tài khoản...</p>
           </div>
         ) : !selectedId ? (
           <div className="flex-1 flex items-center justify-center">
-            <p className="text-gray-400 text-sm">Chưa có tài khoản nào kết nối.</p>
+            <p className="text-gray-400 dark:text-gray-500 text-sm">Chưa có tài khoản nào kết nối.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:flex-1 md:min-h-0">
             {/* LEFT: Open */}
-            <div className="bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden shadow-sm md:min-h-0">
-              <div className="px-4 py-2.5 border-b border-gray-200 flex items-center justify-between flex-wrap gap-2 bg-gray-50">
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden shadow-sm md:min-h-0">
+              <div className="px-4 py-2.5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-wrap gap-2 bg-gray-50 dark:bg-gray-800">
                 <div className="flex items-center gap-2.5">
                   <span className="w-2 h-2 rounded-full bg-blue-500" />
-                  <span className="text-sm font-semibold text-gray-800">Lệnh đang mở</span>
+                  <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">Lệnh đang mở</span>
                 </div>
                 <div className="flex items-center gap-3 text-xs tabular-nums flex-wrap">
-                  <span className="text-gray-500">{openPositions.length} lệnh</span>
-                  <span className="text-gray-500">Lot: <b className="text-gray-700">{fmtVN(openLot, 2)}</b></span>
-                  <span className="text-gray-500">P/L:{' '}
+                  <span className="text-gray-500 dark:text-gray-400">{openPositions.length} lệnh</span>
+                  <span className="text-gray-500 dark:text-gray-400">Lot: <b className="text-gray-700 dark:text-gray-200">{fmtVN(openLot, 2)}</b></span>
+                  <span className="text-gray-500 dark:text-gray-400">P/L:{' '}
                     <AnimatedValue value={`${profitSign(openPnL)}${fmtVN(openPnL)}`} className={profitClass(openPnL)} pulseKey={openPulse.key} direction={openPulse.dir} />
                   </span>
                 </div>
               </div>
               <div className="flex-1 overflow-auto min-h-0">
                 {openPositions.length === 0 ? (
-                  <div className="py-16 text-center text-gray-300 text-sm">Không có lệnh nào đang mở</div>
+                  <div className="py-16 text-center text-gray-300 dark:text-gray-600 text-sm">Không có lệnh nào đang mở</div>
                 ) : (
                   <table className="w-full text-sm min-w-[380px]">
                     <TableHead cols={OPEN_COLS} />
@@ -726,16 +708,16 @@ export default function ExnessPage() {
             </div>
 
             {/* RIGHT: History */}
-            <div className="bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden shadow-sm md:min-h-0">
-              <div className="px-4 py-2.5 border-b border-gray-200 flex items-center justify-between flex-wrap gap-2 bg-gray-50">
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden shadow-sm md:min-h-0">
+              <div className="px-4 py-2.5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-wrap gap-2 bg-gray-50 dark:bg-gray-800">
                 <div className="flex items-center gap-2.5">
                   <span className="w-2 h-2 rounded-full bg-amber-500" />
-                  <span className="text-sm font-semibold text-gray-800">Lịch sử</span>
+                  <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">Lịch sử</span>
                 </div>
                 <div className="flex items-center gap-3 text-xs tabular-nums flex-wrap">
-                  <span className="text-gray-500">{closedList.length} lệnh</span>
-                  <span className="text-gray-500">Lot: <b className="text-gray-700">{fmtVN(closedTotals.lot, 2)}</b></span>
-                  <span className="text-gray-500">P/L:{' '}
+                  <span className="text-gray-500 dark:text-gray-400">{closedList.length} lệnh</span>
+                  <span className="text-gray-500 dark:text-gray-400">Lot: <b className="text-gray-700 dark:text-gray-200">{fmtVN(closedTotals.lot, 2)}</b></span>
+                  <span className="text-gray-500 dark:text-gray-400">P/L:{' '}
                     <AnimatedValue value={`${profitSign(closedTotals.profit)}${fmtVN(closedTotals.profit)}`} className={profitClass(closedTotals.profit)} pulseKey={closedPulse.key} direction={closedPulse.dir} />
                   </span>
                   <DateRangePicker startKey={dateStart} endKey={dateEnd} onChange={(s, e) => { setDateStart(s); setDateEnd(e) }} />
@@ -743,9 +725,9 @@ export default function ExnessPage() {
               </div>
               <div className="overflow-auto md:flex-1 md:min-h-0 h-[500px] md:h-auto">
                 {loadingHistory ? (
-                  <div className="py-16 text-center text-gray-400 text-sm">Đang tải...</div>
+                  <div className="py-16 text-center text-gray-400 dark:text-gray-500 text-sm">Đang tải...</div>
                 ) : closedList.length === 0 ? (
-                  <div className="py-16 text-center text-gray-300 text-sm">Không có lệnh nào trong khoảng này</div>
+                  <div className="py-16 text-center text-gray-300 dark:text-gray-600 text-sm">Không có lệnh nào trong khoảng này</div>
                 ) : (
                   <table className="w-full text-sm min-w-[380px]">
                     <TableHead cols={CLOSED_COLS} />
@@ -758,7 +740,6 @@ export default function ExnessPage() {
         )}
       </main>
 
-      {/* ===== Modals ===== */}
       <ConfirmModal
         open={!!confirmAction && confirmAction.type === 'RUN'}
         title={state === 'STOPPING' ? 'Khởi động bot?' : 'Tiếp tục bot?'}
@@ -797,7 +778,7 @@ export default function ExnessPage() {
       />
 
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[130] bg-gray-900 text-white text-sm px-4 py-2 rounded-lg shadow-lg max-w-sm text-center animate-fade-in">{toast}</div>
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[130] bg-gray-900 dark:bg-gray-700 text-white text-sm px-4 py-2 rounded-lg shadow-lg max-w-sm text-center animate-fade-in">{toast}</div>
       )}
 
       <style>{`

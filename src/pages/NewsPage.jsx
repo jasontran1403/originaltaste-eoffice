@@ -6,31 +6,51 @@ import useDarkMode from '../hooks/useDarkMode'
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:9009'
 
-/* ============ raw time utilities ============ */
+/* ============ time utilities — convert MT5 server time (UTC) to Vietnam time (UTC+7) ============ */
+// Parse ISO string from backend. If no timezone info, treat as UTC (MT5 server time).
+const parseAsUTC = (iso) => {
+  if (!iso) return null
+  const s = String(iso).trim().replace(' ', 'T')
+  const hasTZ = /([zZ]|[+-]\d{2}:?\d{2})$/.test(s)
+  const d = new Date(hasTZ ? s : s + 'Z')
+  return isNaN(d.getTime()) ? null : d
+}
+
+const VN_TZ = 'Asia/Ho_Chi_Minh'
+
 const fmtTime = (iso) => {
-  if (!iso) return '—'
-  const s = String(iso).replace(' ', 'T')
-  const m = s.match(/T(\d{2}:\d{2}(?::\d{2})?)/)
-  if (m) return m[1].length === 5 ? m[1] + ':00' : m[1]
-  const m2 = s.match(/(\d{2}:\d{2}(?::\d{2})?)/)
-  if (m2) return m2[1].length === 5 ? m2[1] + ':00' : m2[1]
-  return '—'
+  const d = parseAsUTC(iso)
+  if (!d) return '—'
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: VN_TZ,
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  }).formatToParts(d)
+  const get = (type) => (parts.find(p => p.type === type)?.value ?? '00').padStart(2, '0')
+  return `${get('hour')}:${get('minute')}:${get('second')}`
 }
+
 const fmtDate = (iso) => {
-  if (!iso) return '—'
-  const s = String(iso).replace(' ', 'T')
-  const m = s.match(/(\d{4})-(\d{2})-(\d{2})/)
-  return m ? `${m[3]}/${m[2]}/${m[1]}` : '—'
+  const d = parseAsUTC(iso)
+  if (!d) return '—'
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: VN_TZ,
+    day: '2-digit', month: '2-digit', year: 'numeric',
+  }).formatToParts(d)
+  const get = (type) => parts.find(p => p.type === type)?.value ?? ''
+  return `${get('day')}/${get('month')}/${get('year')}`
 }
-const fmtDateTime = (iso) => `${fmtDate(iso)} ${fmtTime(iso)}`
+
+const fmtDateTime = (iso) => {
+  const d = parseAsUTC(iso)
+  if (!d) return '—'
+  return `${fmtDate(iso)} ${fmtTime(iso)}`
+}
 
 const minutesUntil = (iso) => {
-  if (!iso) return null
-  try {
-    const target = new Date(String(iso).replace(' ', 'T') + 'Z').getTime()
-    const now = Date.now()
-    return Math.round((target - now) / 60000)
-  } catch { return null }
+  const d = parseAsUTC(iso)
+  if (!d) return null
+  return Math.round((d.getTime() - Date.now()) / 60000)
 }
 const humanDelta = (minutes) => {
   if (minutes == null) return ''

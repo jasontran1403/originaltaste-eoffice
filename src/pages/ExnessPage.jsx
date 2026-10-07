@@ -136,15 +136,15 @@ function CalendarMonth({ year, month, startKey, endKey, hoverKey, onDayClick, on
 function DateRangePicker({ startKey, endKey, onChange }) {
   const today = todayLocal()
   const todayKey = dateKey(today.y, today.m, today.d)
-  const [leftYear, setLeftYear] = useState(today.m === 0 ? today.y - 1 : today.y)
-  const [leftMonth, setLeftMonth] = useState(today.m === 0 ? 11 : today.m - 1)
+  const [leftYear, setLeftYear] = useState(today.y)
+  const [leftMonth, setLeftMonth] = useState(today.m)
   const [hoverKey, setHoverKey] = useState(null)
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
   const rightYear = leftMonth === 11 ? leftYear + 1 : leftYear
   const rightMonth = leftMonth === 11 ? 0 : leftMonth + 1
   const prevMonth = () => { if (leftMonth === 0) { setLeftYear(y => y - 1); setLeftMonth(11) } else setLeftMonth(m => m - 1) }
-  const nextMonth = () => { if (rightMonth === 11) { setLeftYear(y => y + 1); setLeftMonth(0) } else setLeftMonth(m => m + 1) }
+  const nextMonth = () => { if (leftMonth === 11) { setLeftYear(y => y + 1); setLeftMonth(0) } else setLeftMonth(m => m + 1) }
   const handleDayClick = (k) => {
     if (!startKey || (startKey && endKey)) onChange(k, null)
     else { if (isBefore(k, startKey)) onChange(k, startKey); else onChange(startKey, k); setOpen(false) }
@@ -166,14 +166,16 @@ function DateRangePicker({ startKey, endKey, onChange }) {
         <span>{label}</span>
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-2 z-50 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-4" style={{ minWidth: 560 }}>
+        <div className="absolute right-0 top-full mt-2 z-50 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-4 w-72 md:w-auto md:min-w-[560px]">
           <div className="flex items-center justify-between mb-3">
             <button onClick={prevMonth} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400">◀</button>
             <button onClick={nextMonth} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400">▶</button>
           </div>
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <CalendarMonth year={leftYear} month={leftMonth} startKey={startKey} endKey={endKey} hoverKey={hoverKey} todayKey={todayKey} onDayClick={handleDayClick} onDayHover={setHoverKey} />
-            <CalendarMonth year={rightYear} month={rightMonth} startKey={startKey} endKey={endKey} hoverKey={hoverKey} todayKey={todayKey} onDayClick={handleDayClick} onDayHover={setHoverKey} />
+            <div className="hidden md:block">
+              <CalendarMonth year={rightYear} month={rightMonth} startKey={startKey} endKey={endKey} hoverKey={hoverKey} todayKey={todayKey} onDayClick={handleDayClick} onDayHover={setHoverKey} />
+            </div>
           </div>
           <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
             {[

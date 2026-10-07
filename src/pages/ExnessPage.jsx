@@ -76,6 +76,59 @@ function AnimatedValue({ value, className = '', pulseKey, direction }) {
 }
 
 /* ================================================================
+   AVOIDING NEWS — countdown badge
+   ================================================================ */
+// Backend trả ISO không timezone, hiểu là UTC (giống NewsPage)
+const parseAsUTC = (iso) => {
+  if (!iso) return null
+  const s = String(iso).trim().replace(' ', 'T')
+  const hasTZ = /([zZ]|[+-]\d{2}:?\d{2})$/.test(s)
+  const d = new Date(hasTZ ? s : s + 'Z')
+  return isNaN(d.getTime()) ? null : d
+}
+const fmtCountdown = (ms) => {
+  if (ms == null || ms <= 0) return '00:00'
+  const s = Math.floor(ms / 1000)
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const ss = s % 60
+  const pad = (n) => String(n).padStart(2, '0')
+  return h > 0 ? `${pad(h)}:${pad(m)}:${pad(ss)}` : `${pad(m)}:${pad(ss)}`
+}
+function AvoidingNewsBadge({ title, until }) {
+  const [, tick] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => tick(x => x + 1), 1000)
+    return () => clearInterval(t)
+  }, [])
+  const target = parseAsUTC(until)
+  const remain = target ? target.getTime() - Date.now() : null
+  // Nếu đã qua giờ, không hiển thị (BE auto-expire ở sync kế)
+  if (remain != null && remain <= 0) return null
+  return (
+    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-rose-200 dark:border-rose-700 bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 text-xs font-semibold shadow-sm">
+      <span className="relative flex h-2 w-2">
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
+        <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500" />
+      </span>
+      <span>⛈ Đang tránh bão</span>
+      {title && (
+        <>
+          <span className="text-rose-400 dark:text-rose-500">·</span>
+          <span className="truncate max-w-[16rem]" title={title}>Tin: <b>{title}</b></span>
+        </>
+      )}
+      {remain != null && (
+        <>
+          <span className="text-rose-400 dark:text-rose-500">·</span>
+          <span>Còn <b className="tabular-nums">{fmtCountdown(remain)}</b></span>
+        </>
+      )}
+    </div>
+  )
+}
+
+/* ================================================================
    STATE BADGE
    ================================================================ */
 const STATE_META = {
@@ -623,6 +676,9 @@ export default function ExnessPage() {
         <section className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 sm:px-6 py-3 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3 flex-wrap">
             <StateBadge state={state} />
+            {account.avoidingNews && (
+              <AvoidingNewsBadge title={account.avoidingNewsTitle} until={account.avoidingNewsUntil} />
+            )}
             <div className="text-sm">
               <span className="text-gray-500 dark:text-gray-400 mr-1">Login:</span><b className="tabular-nums">{account.login}</b>
               {account.name && <span className="ml-2 text-gray-500 dark:text-gray-400">· {account.name}</span>}

@@ -5,6 +5,8 @@ import ConfirmModal from '../components/common/ConfirmModal'
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:9009'
 
+const STORAGE_KEY_ACCOUNT = 'mt5_selected_account'
+
 /* ================================================================
    DATE HELPERS — dùng raw MT5 server time, KHÔNG convert sang giờ VN.
    Thời gian lưu DB là giờ broker gửi lên (ví dụ Exness ~ UTC+3).
@@ -39,10 +41,8 @@ const fmtPrice = (v) => {
 const fmtTime = (iso) => {
   if (!iso) return '—'
   const s = String(iso).replace(' ', 'T')
-  // "2026-10-06T14:15:13" → "14:15:13"
   const m = s.match(/T(\d{2}:\d{2}:\d{2})/)
   if (m) return m[1]
-  // Fallback: nếu định dạng "2026.10.06 14:15:13"
   const m2 = s.match(/(\d{2}:\d{2}:\d{2})/)
   return m2 ? m2[1] : '—'
 }
@@ -81,9 +81,9 @@ function AnimatedValue({ value, className = '', pulseKey, direction }) {
    STATE BADGE / BUTTON
    ================================================================ */
 const STATE_META = {
-  RUNNING:  { label: 'ĐANG CHẠY',    dot: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50',  border: 'border-emerald-200',  pulse: true  },
-  PAUSED:   { label: 'TẠM DỪNG',     dot: 'bg-amber-400',   text: 'text-amber-700',   bg: 'bg-amber-50',    border: 'border-amber-200',    pulse: false },
-  STOPPING: { label: 'ĐÃ TẮT',       dot: 'bg-rose-500',    text: 'text-rose-700',    bg: 'bg-rose-50',     border: 'border-rose-200',     pulse: true  },
+  RUNNING: { label: 'ĐANG CHẠY', dot: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', pulse: true },
+  PAUSED: { label: 'TẠM DỪNG', dot: 'bg-amber-400', text: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', pulse: false },
+  STOPPING: { label: 'ĐÃ TẮT', dot: 'bg-rose-500', text: 'text-rose-700', bg: 'bg-rose-50', border: 'border-rose-200', pulse: true },
 }
 function StateBadge({ state }) {
   const m = STATE_META[state] || STATE_META.PAUSED
@@ -96,10 +96,10 @@ function StateBadge({ state }) {
 }
 
 /* ================================================================
-   DATE RANGE PICKER (giữ gọn — dropdown đơn giản)
+   DATE RANGE PICKER
    ================================================================ */
-const MONTHS_VI = ['Tháng 1','Tháng 2','Tháng 3','Tháng 4','Tháng 5','Tháng 6','Tháng 7','Tháng 8','Tháng 9','Tháng 10','Tháng 11','Tháng 12']
-const DAYS_VI = ['CN','T2','T3','T4','T5','T6','T7']
+const MONTHS_VI = ['Tháng 1', 'Tháng 2', 'Tháng 3', 'Tháng 4', 'Tháng 5', 'Tháng 6', 'Tháng 7', 'Tháng 8', 'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12']
+const DAYS_VI = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7']
 function CalendarMonth({ year, month, startKey, endKey, hoverKey, onDayClick, onDayHover, todayKey }) {
   const days = daysInMonth(year, month)
   const startDow = dow0(year, month)
@@ -156,7 +156,7 @@ function DateRangePicker({ startKey, endKey, onChange }) {
     const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
     document.addEventListener('mousedown', handler); return () => document.removeEventListener('mousedown', handler)
   }, [open])
-  const fmtDisplay = (k) => { if (!k) return ''; const { y, m, d } = parseKey(k); return `${String(d).padStart(2,'0')}/${String(m+1).padStart(2,'0')}/${y}` }
+  const fmtDisplay = (k) => { if (!k) return ''; const { y, m, d } = parseKey(k); return `${String(d).padStart(2, '0')}/${String(m + 1).padStart(2, '0')}/${y}` }
   const label = startKey && endKey ? (startKey === endKey ? fmtDisplay(startKey) : `${fmtDisplay(startKey)} – ${fmtDisplay(endKey)}`) : startKey ? `${fmtDisplay(startKey)} – ...` : 'Chọn ngày'
   return (
     <div ref={ref} className="relative">
@@ -194,33 +194,20 @@ function DateRangePicker({ startKey, endKey, onChange }) {
 }
 
 /* ================================================================
-   LOT MODAL (chỉ cho sửa khi PAUSED)
-   - Chấp nhận cả "." và "," làm dấu thập phân
-   - Tối đa 2 số sau thập phân
-   - Min 0.01
-   - Bỏ spinner (type="text" + inputMode="decimal")
-   - Auto-select khi click
+   LOT MODAL
    ================================================================ */
 const LOT_MIN = 0.01
 
-/** Chuẩn hóa string lot: trả về {text, number|null}.
- *  Accept rỗng, "0", "0.", "0.0", "0.01", "0,5", "1.23", "12".
- *  Reject: nhiều dấu thập phân, > 2 số sau thập phân, chữ cái.
- */
 function normalizeLotInput(raw) {
   if (raw == null) return { text: '', number: null }
-  // Thay dấu "," → "." để parse. Hiển thị giữ nguyên dấu user gõ.
   let s = String(raw).trim()
-  // Chỉ cho ký tự số + 1 dấu , hoặc .
   s = s.replace(/[^\d.,]/g, '')
-  // Nếu có cả "." và "," → chỉ giữ ký tự đầu tiên gặp
   const firstSep = s.search(/[.,]/)
   if (firstSep >= 0) {
     const sep = s[firstSep]
-    // Chỉ 1 dấu thập phân: xóa tất cả dấu phân cách còn lại trong phần sau
     const head = s.slice(0, firstSep)
     const tail = s.slice(firstSep + 1).replace(/[.,]/g, '')
-    s = head + sep + tail.slice(0, 2)   // cắt max 2 số sau thập phân
+    s = head + sep + tail.slice(0, 2)
   }
   const forParse = s.replace(',', '.')
   const num = s === '' || s === '.' || s === ',' ? null : Number(forParse)
@@ -233,10 +220,8 @@ function LotEditModal({ open, current, canEdit, saving, error, onClose, onSave }
 
   useEffect(() => {
     if (!open) return
-    // Hiển thị lot hiện tại với format đẹp (bỏ 0 thừa, giữ ít nhất 2 số thập phân nếu có)
     const init = current && current > 0 ? Number(current).toFixed(2).replace(/\.?0+$/, '') : ''
     setText(init || String(current ?? ''))
-    // Auto-focus + select hết sau khi modal render
     setTimeout(() => {
       if (inputRef.current) {
         inputRef.current.focus()
@@ -300,7 +285,7 @@ function LotEditModal({ open, current, canEdit, saving, error, onClose, onSave }
 }
 
 /* ================================================================
-   STOP MODAL (yêu cầu passcode)
+   STOP MODAL
    ================================================================ */
 function StopPasscodeModal({ open, saving, error, onClose, onConfirm }) {
   const [pass, setPass] = useState('')
@@ -417,9 +402,12 @@ export default function ExnessPage() {
   const [stopSaving, setStopSaving] = useState(false)
   const [stopError, setStopError] = useState(null)
 
+  // Cờ báo đã fetch xong danh sách account lần đầu (tránh nháy UI "Chưa có tài khoản")
+  const [booting, setBooting] = useState(true)
+
   const initToday = () => { const t = todayLocal(); return dateKey(t.y, t.m, t.d) }
   const [dateStart, setDateStart] = useState(initToday)
-  const [dateEnd, setDateEnd]     = useState(initToday)
+  const [dateEnd, setDateEnd] = useState(initToday)
 
   const clientRef = useRef(null)
 
@@ -427,24 +415,50 @@ export default function ExnessPage() {
     setToast(msg); setTimeout(() => setToast(null), ms)
   }, [])
 
+  // ---- Chọn account ưu tiên: đang chọn → localStorage → "Gold 1" → đầu tiên ----
+  const pickAccountId = useCallback((items, prev) => {
+    if (!items || items.length === 0) return null
+    // 1) Nếu đang có selectedId và vẫn tồn tại trong list mới → giữ nguyên
+    if (prev && items.some(a => a.id === prev)) return prev
+    // 2) Đọc localStorage (chỉ khi chưa có prev — lần đầu mount / F5)
+    if (!prev) {
+      const saved = Number(localStorage.getItem(STORAGE_KEY_ACCOUNT))
+      if (saved && items.some(a => a.id === saved)) return saved
+    }
+    // 3) Ưu tiên tài khoản tên "Gold 1" (case-insensitive, trim)
+    const gold1 = items.find(a => (a.name || '').trim().toLowerCase() === 'gold 1')
+    if (gold1) return gold1.id
+    // 4) Fallback: tài khoản đầu tiên
+    return items[0].id
+  }, [])
+
   // ---- Load account list ----
   const refreshAccounts = useCallback(() => {
-    return fetch(`${BASE}/api/public/mt5-bot/accounts`).then(r => r.json()).then(d => {
-      const items = d.items || []
-      setAccounts(items)
-      setSelectedId(prev => {
-        if (prev && items.some(a => a.id === prev)) return prev
-        return items.length > 0 ? items[0].id : null
+    return fetch(`${BASE}/api/public/mt5-bot/accounts`)
+      .then(r => r.json())
+      .then(d => {
+        const items = d.items || []
+        setAccounts(items)
+        setSelectedId(prev => pickAccountId(items, prev))
       })
-    }).catch(console.error)
-  }, [])
+      .catch(console.error)
+      .finally(() => setBooting(false))
+  }, [pickAccountId])
+
   useEffect(() => {
     refreshAccounts()
     const t = setInterval(refreshAccounts, 30_000)
     return () => clearInterval(t)
   }, [refreshAccounts])
 
-  // ---- Load account detail (manually, WS updates it after) ----
+  // ---- Persist selectedId vào localStorage để F5 không nhảy tài khoản ----
+  useEffect(() => {
+    if (selectedId != null) {
+      localStorage.setItem(STORAGE_KEY_ACCOUNT, String(selectedId))
+    }
+  }, [selectedId])
+
+  // ---- Load account detail ----
   const refreshAccount = useCallback(async (id) => {
     if (!id) return
     try {
@@ -486,8 +500,6 @@ export default function ExnessPage() {
           try {
             const acc = JSON.parse(msg.body)
             setAccount(acc)
-            // Nếu có closed order mới xuất hiện trong khoảng ngày hiện tại → reload history
-            // (đơn giản: nếu latestClosedTicket thay đổi so với cũ sẽ reload)
             setAccounts(prev => prev.map(a => a.id === acc.id ? { ...a, ...acc } : a))
           } catch (e) { console.error(e) }
         })
@@ -569,11 +581,11 @@ export default function ExnessPage() {
     }
     setConfirmAction({ type: 'RUN' })
   }
-  const requestPause   = () => setConfirmAction({ type: 'PAUSE' })
-  const requestStop    = () => setStopOpen(true)
+  const requestPause = () => setConfirmAction({ type: 'PAUSE' })
+  const requestStop = () => setStopOpen(true)
   const requestEditLot = () => { setLotError(null); setLotOpen(true) }
 
-  const canEditLot = state !== 'RUNNING'   // PAUSED hoặc STOPPING đều cho sửa
+  const canEditLot = state !== 'RUNNING'
   const currentLot = account?.lot ?? 0
 
   const OPEN_COLS = [
@@ -645,7 +657,6 @@ export default function ExnessPage() {
               className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50">
               ⚙ Sửa lot
             </button>
-            {/* Slot 1: Tạm dừng (RUNNING) ↔ Tiếp tục (PAUSED/STOPPING) */}
             {state === 'RUNNING' ? (
               <button onClick={requestPause} disabled={actionBusy}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold border bg-amber-500 hover:bg-amber-400 text-white border-amber-500 disabled:opacity-40">
@@ -658,7 +669,6 @@ export default function ExnessPage() {
               </button>
             )}
 
-            {/* Slot 2: Tắt (RUNNING/PAUSED) ↔ Khởi động (STOPPING) */}
             {state === 'STOPPING' ? (
               <button onClick={requestRun} disabled={actionBusy}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold border bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-600 disabled:opacity-40">
@@ -675,7 +685,11 @@ export default function ExnessPage() {
       )}
 
       <main className="flex-1 md:min-h-0 flex flex-col p-4 sm:p-5 gap-4">
-        {!selectedId ? (
+        {booting ? (
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-gray-400 text-sm">Đang tải tài khoản...</p>
+          </div>
+        ) : !selectedId ? (
           <div className="flex-1 flex items-center justify-center">
             <p className="text-gray-400 text-sm">Chưa có tài khoản nào kết nối.</p>
           </div>

@@ -777,17 +777,23 @@ export default function ExnessPage() {
 
             {/* RIGHT: History */}
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden shadow-sm md:min-h-0">
-              <div className="px-4 py-2.5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-wrap gap-2 bg-gray-50 dark:bg-gray-800">
-                <div className="flex items-center gap-2.5">
-                  <span className="w-2 h-2 rounded-full bg-amber-500" />
-                  <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">Lịch sử</span>
+              <div className="px-4 py-2.5 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex flex-col gap-2">
+                {/* Row 1: tiêu đề + thống kê */}
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-2 h-2 rounded-full bg-amber-500" />
+                    <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">Lịch sử</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs tabular-nums flex-wrap">
+                    <span className="text-gray-500 dark:text-gray-400">{closedList.length} lệnh</span>
+                    <span className="text-gray-500 dark:text-gray-400">Lot: <b className="text-gray-700 dark:text-gray-200">{fmtVN(closedTotals.lot, 2)}</b></span>
+                    <span className="text-gray-500 dark:text-gray-400">P/L:{' '}
+                      <AnimatedValue value={`${profitSign(closedTotals.profit)}${fmtVN(closedTotals.profit)}`} className={profitClass(closedTotals.profit)} pulseKey={closedPulse.key} direction={closedPulse.dir} />
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3 text-xs tabular-nums flex-wrap">
-                  <span className="text-gray-500 dark:text-gray-400">{closedList.length} lệnh</span>
-                  <span className="text-gray-500 dark:text-gray-400">Lot: <b className="text-gray-700 dark:text-gray-200">{fmtVN(closedTotals.lot, 2)}</b></span>
-                  <span className="text-gray-500 dark:text-gray-400">P/L:{' '}
-                    <AnimatedValue value={`${profitSign(closedTotals.profit)}${fmtVN(closedTotals.profit)}`} className={profitClass(closedTotals.profit)} pulseKey={closedPulse.key} direction={closedPulse.dir} />
-                  </span>
+                {/* Row 2: date picker — luôn ở dòng 2, canh phải */}
+                <div className="flex justify-end">
                   <DateRangePicker startKey={dateStart} endKey={dateEnd} onChange={(s, e) => { setDateStart(s); setDateEnd(e) }} />
                 </div>
               </div>

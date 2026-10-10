@@ -51,6 +51,16 @@ const rawDateKey = (iso) => {
   const m = s.match(/(\d{4})-(\d{2})-(\d{2})/)
   return m ? `${m[1]}-${m[2]}-${m[3]}` : null
 }
+const fmtDateTime = (iso) => {
+  if (!iso) return ''
+  const s = String(iso).replace(' ', 'T')
+  const dm = s.match(/(\d{4})-(\d{2})-(\d{2})/)
+  const tm = s.match(/T(\d{2}):(\d{2})(?::(\d{2}))?/) || s.match(/(\d{2}):(\d{2})(?::(\d{2}))?/)
+  if (!dm || !tm) return ''
+  const yy = dm[1].slice(2)
+  const hh = tm[1], mm = tm[2], ss = tm[3] ?? '00'
+  return `${hh}:${mm}:${ss} ${dm[3]}/${dm[2]}/${yy}`
+}
 
 const calcNet = (t) => Number(t.profit || 0) + Number(t.commission || 0) + Number(t.swap || 0) + Number(t.fee || 0)
 const profitSign = (v) => v > 0.001 ? '+' : ''
@@ -410,7 +420,16 @@ function OpenRow({ pos, isNew }) {
   const pl = Number(pos.profit || 0)
   return (
     <tr className={`border-b border-gray-100 dark:border-gray-700 ${isNew ? 'row-enter' : 'hover:bg-blue-50/40 dark:hover:bg-blue-900/20'}`}>
-      <td className="px-3 py-2.5 text-[11px] text-gray-400 dark:text-gray-500 tabular-nums font-mono">#{pos.ticket}</td>
+      <td className="px-3 py-2.5 text-[11px] text-gray-400 dark:text-gray-500 tabular-nums font-mono">
+        <div className="leading-tight">
+          <div>#{pos.ticket}</div>
+          {pos.openTime && (
+            <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 font-normal whitespace-nowrap">
+              {fmtDateTime(pos.openTime)}
+            </div>
+          )}
+        </div>
+      </td>
       <td className="px-3 py-2.5 hidden md:table-cell">
         <span className={`text-xs font-bold ${pos.direction === 'BUY' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'}`}>{pos.direction}</span>
       </td>
@@ -428,7 +447,16 @@ function ClosedRow({ trade: t }) {
   const net = calcNet(t)
   return (
     <tr className="border-b border-gray-100 dark:border-gray-700 hover:bg-amber-50/40 dark:hover:bg-amber-900/20">
-      <td className="px-3 py-2.5 text-[11px] text-gray-400 dark:text-gray-500 tabular-nums font-mono">#{t.ticket}</td>
+      <td className="px-3 py-2.5 text-[11px] text-gray-400 dark:text-gray-500 tabular-nums font-mono">
+        <div className="leading-tight">
+          <div>#{t.ticket}</div>
+          {t.closeTime && (
+            <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 font-normal whitespace-nowrap">
+              {fmtDateTime(t.closeTime)}
+            </div>
+          )}
+        </div>
+      </td>
       <td className="px-3 py-2.5 hidden md:table-cell">
         <span className={`text-xs font-bold ${dir ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'}`}>{t.direction}</span>
       </td>
@@ -763,11 +791,11 @@ export default function ExnessPage() {
                   </span>
                 </div>
               </div>
-              <div className="flex-1 overflow-auto min-h-0">
+              <div className="flex-1 overflow-y-auto overflow-x-hidden md:overflow-x-auto min-h-0">
                 {openPositions.length === 0 ? (
                   <div className="py-16 text-center text-gray-300 dark:text-gray-600 text-sm">Không có lệnh nào đang mở</div>
                 ) : (
-                  <table className="w-full text-sm min-w-[380px]">
+                  <table className="w-full text-sm md:min-w-[380px]">
                     <TableHead cols={OPEN_COLS} />
                     <tbody>{openPositions.map(p => <OpenRow key={p.ticket} pos={p} />)}</tbody>
                   </table>
@@ -797,13 +825,13 @@ export default function ExnessPage() {
                   <DateRangePicker startKey={dateStart} endKey={dateEnd} onChange={(s, e) => { setDateStart(s); setDateEnd(e) }} />
                 </div>
               </div>
-              <div className="overflow-auto md:flex-1 md:min-h-0 h-[500px] md:h-auto">
+              <div className="overflow-y-auto overflow-x-hidden md:overflow-x-auto md:flex-1 md:min-h-0 h-[500px] md:h-auto">
                 {loadingHistory ? (
                   <div className="py-16 text-center text-gray-400 dark:text-gray-500 text-sm">Đang tải...</div>
                 ) : closedList.length === 0 ? (
                   <div className="py-16 text-center text-gray-300 dark:text-gray-600 text-sm">Không có lệnh nào trong khoảng này</div>
                 ) : (
-                  <table className="w-full text-sm min-w-[380px]">
+                  <table className="w-full text-sm md:min-w-[380px]">
                     <TableHead cols={CLOSED_COLS} />
                     <tbody>{closedList.map(t => <ClosedRow key={t.ticket} trade={t} />)}</tbody>
                   </table>

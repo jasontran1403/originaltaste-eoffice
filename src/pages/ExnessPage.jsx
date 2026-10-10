@@ -434,8 +434,15 @@ function OpenRow({ pos, isNew }) {
         <span className={`text-xs font-bold ${pos.direction === 'BUY' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'}`}>{pos.direction}</span>
       </td>
       <td className="px-3 py-2.5 text-xs text-gray-700 dark:text-gray-200 font-medium">{pos.symbol || '—'}</td>
-      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-700 dark:text-gray-200">{fmtVN(pos.volume, 2)}</td>
-      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-600 dark:text-gray-300">{fmtPrice(pos.openPrice)}</td>
+      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-700 dark:text-gray-200">
+        <div className="leading-tight">
+          <div>{fmtVN(pos.volume, 2)}</div>
+          <div className="md:hidden text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 font-normal whitespace-nowrap">
+            {fmtPrice(pos.openPrice)}
+          </div>
+        </div>
+      </td>
+      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-600 dark:text-gray-300 hidden md:table-cell">{fmtPrice(pos.openPrice)}</td>
       <td className={`px-3 py-2.5 text-right text-xs tabular-nums font-semibold ${profitClass(pl)}`}>{`${profitSign(pl)}${fmtVN(pl)}`}</td>
       <td className="px-3 py-2.5 text-right text-xs text-gray-400 dark:text-gray-500 tabular-nums hidden md:table-cell">{fmtTime(pos.openTime)}</td>
     </tr>
@@ -461,9 +468,16 @@ function ClosedRow({ trade: t }) {
         <span className={`text-xs font-bold ${dir ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400'}`}>{t.direction}</span>
       </td>
       <td className="px-3 py-2.5 text-xs text-gray-700 dark:text-gray-200 font-medium">{t.symbol || '—'}</td>
-      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-700 dark:text-gray-200">{fmtVN(t.volume, 2)}</td>
+      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-700 dark:text-gray-200">
+        <div className="leading-tight">
+          <div>{fmtVN(t.volume, 2)}</div>
+          <div className="md:hidden text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 font-normal whitespace-nowrap">
+            {fmtPrice(t.closePrice)}
+          </div>
+        </div>
+      </td>
       <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-500 dark:text-gray-400 hidden md:table-cell">{fmtPrice(t.openPrice)}</td>
-      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-500 dark:text-gray-400">{fmtPrice(t.closePrice)}</td>
+      <td className="px-3 py-2.5 text-right text-xs tabular-nums text-gray-500 dark:text-gray-400 hidden md:table-cell">{fmtPrice(t.closePrice)}</td>
       <td className={`px-3 py-2.5 text-right text-xs tabular-nums font-semibold ${profitClass(net)}`}>{`${profitSign(net)}${fmtVN(net)}`}</td>
       <td className="px-3 py-2.5 text-right text-xs text-gray-400 dark:text-gray-500 tabular-nums hidden md:table-cell">{fmtTime(t.closeTime)}</td>
     </tr>
@@ -668,11 +682,11 @@ export default function ExnessPage() {
 
   const OPEN_COLS = [
     { label: 'Ticket' }, { label: 'Side', hideOnMobile: true }, { label: 'Symbol' },
-    { label: 'Lot' }, { label: 'Open' }, { label: 'P/L' }, { label: 'Giờ mở', hideOnMobile: true },
+    { label: 'Lot' }, { label: 'Open', hideOnMobile: true }, { label: 'P/L' }, { label: 'Giờ mở', hideOnMobile: true },
   ]
   const CLOSED_COLS = [
     { label: 'Ticket' }, { label: 'Side', hideOnMobile: true }, { label: 'Symbol' },
-    { label: 'Lot' }, { label: 'Open', hideOnMobile: true }, { label: 'Close' },
+    { label: 'Lot' }, { label: 'Open', hideOnMobile: true }, { label: 'Close', hideOnMobile: true },
     { label: 'P/L' }, { label: 'Giờ đóng', hideOnMobile: true },
   ]
 

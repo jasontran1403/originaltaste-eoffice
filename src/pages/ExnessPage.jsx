@@ -10,26 +10,6 @@ const BASE = import.meta.env.VITE_API_URL || 'http://localhost:9009'
 const STORAGE_KEY_ACCOUNT = 'mt5_selected_account'
 
 /* ================================================================
-   TIMEZONE
-   ----------------------------------------------------------------
-   BE lưu close_time / open_time theo giờ MT5 server (hiện là UTC+0).
-   UI muốn hiển thị theo giờ Việt Nam (GMT+7). Vì chuỗi ISO từ BE
-   là "naive" (không có offset), ta parse như UTC rồi cộng offset.
-   ================================================================ */
-const DISPLAY_TZ_OFFSET_HOURS = 7   // Giờ Việt Nam
-
-/** Parse chuỗi thời gian naive từ BE (coi là UTC) rồi shift sang GMT+7.
- *  Trả về Date — các getter *UTC* trên Date này chính là wall-clock VN. */
-const toDisplayDate = (iso) => {
-  if (!iso) return null
-  const s = String(iso).trim().replace(' ', 'T')
-  const hasTZ = /([zZ]|[+-]\d{2}:?\d{2})$/.test(s)
-  const d = new Date(hasTZ ? s : s + 'Z')
-  if (isNaN(d.getTime())) return null
-  return new Date(d.getTime() + DISPLAY_TZ_OFFSET_HOURS * 3600 * 1000)
-}
-
-/* ================================================================
    DATE HELPERS
    ================================================================ */
 const todayLocal = () => {
@@ -56,32 +36,32 @@ const fmtPrice = (v) => {
   const s = String(v); const dec = s.includes('.') ? s.split('.')[1].length : 2
   return fmtVN(v, Math.min(dec, 5))
 }
+// BE đã convert openTime/closeTime sang GMT+7 trước khi trả, nên FE chỉ
+// cần parse chuỗi raw và hiển thị y nguyên, không shift timezone nữa.
 const fmtTime = (iso) => {
-  const d = toDisplayDate(iso)
-  if (!d) return '—'
-  const hh = String(d.getUTCHours()).padStart(2, '0')
-  const mm = String(d.getUTCMinutes()).padStart(2, '0')
-  const ss = String(d.getUTCSeconds()).padStart(2, '0')
+  if (!iso) return '—'
+  const s = String(iso).replace(' ', 'T')
+  let m = s.match(/T(\d{2}):(\d{2})(?::(\d{2}))?/)
+  if (!m) m = s.match(/(\d{2}):(\d{2})(?::(\d{2}))?/)
+  if (!m) return '—'
+  const hh = m[1], mm = m[2], ss = m[3] ?? '00'
   return `${hh}:${mm}:${ss}`
 }
 const rawDateKey = (iso) => {
-  const d = toDisplayDate(iso)
-  if (!d) return null
-  const y = d.getUTCFullYear()
-  const m = String(d.getUTCMonth() + 1).padStart(2, '0')
-  const da = String(d.getUTCDate()).padStart(2, '0')
-  return `${y}-${m}-${da}`
+  if (!iso) return null
+  const s = String(iso).replace(' ', 'T')
+  const m = s.match(/(\d{4})-(\d{2})-(\d{2})/)
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null
 }
 const fmtDateTime = (iso) => {
-  const d = toDisplayDate(iso)
-  if (!d) return ''
-  const yy = String(d.getUTCFullYear()).slice(2)
-  const mo = String(d.getUTCMonth() + 1).padStart(2, '0')
-  const da = String(d.getUTCDate()).padStart(2, '0')
-  const hh = String(d.getUTCHours()).padStart(2, '0')
-  const mm = String(d.getUTCMinutes()).padStart(2, '0')
-  const ss = String(d.getUTCSeconds()).padStart(2, '0')
-  return `${hh}:${mm}:${ss} ${da}/${mo}/${yy}`
+  if (!iso) return ''
+  const s = String(iso).replace(' ', 'T')
+  const dm = s.match(/(\d{4})-(\d{2})-(\d{2})/)
+  const tm = s.match(/T(\d{2}):(\d{2})(?::(\d{2}))?/) || s.match(/(\d{2}):(\d{2})(?::(\d{2}))?/)
+  if (!dm || !tm) return ''
+  const yy = dm[1].slice(2)
+  const hh = tm[1], mm = tm[2], ss = tm[3] ?? '00'
+  return `${hh}:${mm}:${ss} ${dm[3]}/${dm[2]}/${yy}`
 }
 
 const calcNet = (t) => Number(t.profit || 0) + Number(t.commission || 0) + Number(t.swap || 0) + Number(t.fee || 0)

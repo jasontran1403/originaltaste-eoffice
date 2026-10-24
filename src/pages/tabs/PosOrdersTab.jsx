@@ -8,6 +8,13 @@ import { fmtCurrency, fmtDateTime, todayVN } from '../../utils/format'
 
 const PAGE_SIZE = 50
 
+// Danh sách store được phép xem trong tab POS. Tạm thời chỉ mở 2 store:
+//   9 = OT-447HVB (mặc định)
+//   7 = ???
+// Bỏ lựa chọn "Tất cả cửa hàng". Khi muốn mở thêm store, chỉ cần append id vào mảng.
+const POS_ALLOWED_STORE_IDS = [9, 7]
+const POS_DEFAULT_STORE_ID  = '9'
+
 const STATUS = {
   COMPLETED:   { l: 'Hoàn thành', cls: 'bg-green-100 text-green-700' },
   CANCELLED:   { l: 'Đã hủy',     cls: 'bg-red-100 text-red-600' },
@@ -19,7 +26,8 @@ const STATUS = {
  * Đơn coi như đã phát hành khi có eInvoiceNo — kể cả eInvoiceStatus bị thiếu
  * (đơn cũ, hoặc lưu kết quả lỗi giữa chừng). Tránh cho phát hành trùng.
  */
-const isIssued = o => o.eInvoiceStatus === 'ISSUED' || !!o.eInvoiceNo
+const isIssued     = o => o.eInvoiceStatus === 'ISSUED' || !!o.eInvoiceNo
+const isGiftIssued = o => o.giftEInvoiceStatus === 'ISSUED' || !!o.giftEInvoiceNo
 
 function rowCls(o) {
   if (isIssued(o)) return 'bg-emerald-50'
@@ -40,7 +48,8 @@ export default function PosOrdersTab({ pageState, showToast }) {
   const fromDate = get('posFrom', today)
   const toDate   = get('posTo', today)
   const page     = getNum('posPage', 0)
-  const storeId  = get('posStore', '')          // '' = tất cả cửa hàng
+  // storeId: mặc định = 9 (OT-447HVB); không còn tùy chọn "tất cả".
+  const storeId  = get('posStore', POS_DEFAULT_STORE_ID)
 
   // ── State cục bộ ────────────────────────────────────────────────
   const [orders, setOrders] = useState([])
@@ -50,10 +59,19 @@ export default function PosOrdersTab({ pageState, showToast }) {
   const [modal, setModal] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
-  // ── Danh sách cửa hàng cho dropdown ─────────────────────────────
+  // Đảm bảo URL luôn có posStore (nếu user vào không kèm query thì set mặc định)
+  useEffect(() => {
+    if (!get('posStore', '')) patch({ posStore: POS_DEFAULT_STORE_ID })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ── Danh sách cửa hàng cho dropdown — chỉ các store được allow ──
   useEffect(() => {
     getStores()
-      .then(r => setStores(r.data?.data || []))
+      .then(r => {
+        const all = r.data?.data || []
+        setStores(all.filter(s => POS_ALLOWED_STORE_IDS.includes(Number(s.id))))
+      })
       .catch(() => setStores([]))   // lỗi dropdown không nên chặn cả trang
   }, [])
 
@@ -78,14 +96,15 @@ export default function PosOrdersTab({ pageState, showToast }) {
   const handleRangeChange = (f, t) => patch({ posFrom: f, posTo: t, posPage: 0 })
   const handleStoreChange = e => patch({ posStore: e.target.value, posPage: 0 })
 
-  const storeLabel = storeId
-    ? (stores.find(s => String(s.id) === String(storeId))?.name || `#${storeId}`)
-    : 'Tất cả cửa hàng'
+  const storeLabel = stores.find(s => String(s.id) === String(storeId))?.name
+                  || `#${storeId}`
 
   return (
-    <>
+    // Khung tab = flex column fill parent; filter/chú thích/pagination shrink-0,
+    // chỉ card chứa bảng là flex-1 + overflow để scroll trong.
+    <div className="flex-1 min-h-0 flex flex-col">
       {/* ── Thanh filter ── */}
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-4 shrink-0">
         <div>
           <h2 className="text-lg font-bold text-gray-900">Đơn hàng POS</h2>
           <p className="text-sm text-gray-500 mt-0.5">
@@ -99,9 +118,8 @@ export default function PosOrdersTab({ pageState, showToast }) {
             onChange={handleStoreChange}
             className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 hover:border-blue-400 transition-colors shadow-sm outline-none focus:border-blue-500"
           >
-            <option value="">🏪 Tất cả cửa hàng</option>
             {stores.map(s => (
-              <option key={s.id} value={s.id}>{s.name}</option>
+              <option key={s.id} value={s.id}>🏪 {s.name}</option>
             ))}
           </select>
 
@@ -118,7 +136,7 @@ export default function PosOrdersTab({ pageState, showToast }) {
       </div>
 
       {/* ── Chú thích màu ── */}
-      <div className="flex flex-wrap gap-4 mb-4 text-xs text-gray-500">
+      <div className="flex flex-wrap gap-4 mb-3 text-xs text-gray-500 shrink-0">
         {[
           { cls: 'bg-emerald-100 border-emerald-300', lbl: 'Đã xuất hóa đơn' },
           { cls: 'bg-orange-100 border-orange-300',   lbl: 'Có thông tin xuất HĐ' },
@@ -132,8 +150,8 @@ export default function PosOrdersTab({ pageState, showToast }) {
         ))}
       </div>
 
-      {/* ── Bảng ── */}
-      <div className="card">
+      {/* ── Bảng — flex-1 fill phần còn lại, scroll bên trong ── */}
+      <div className="card flex-1 min-h-0 flex flex-col overflow-hidden">
         {loading ? (
           <div className="py-20 text-center text-gray-400">
             <div className="text-4xl mb-3 animate-pulse">⏳</div>
@@ -146,9 +164,9 @@ export default function PosOrdersTab({ pageState, showToast }) {
             <p className="text-sm mt-1 text-gray-300">Thử chọn cửa hàng hoặc khoảng thời gian khác</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="flex-1 min-h-0 overflow-auto">
             <table className="w-full text-sm">
-              <thead>
+              <thead className="sticky top-0 z-10">
                 <tr className="bg-gray-50 border-b border-gray-200">
                   {['Mã đơn / Cửa hàng', 'Khách hàng', 'Thông tin HĐ', 'Tiền hàng', 'VAT',
                     'Thành tiền', 'Thời gian tạo', 'Hành động'].map(h => (
@@ -165,9 +183,16 @@ export default function PosOrdersTab({ pageState, showToast }) {
                       <p className="font-semibold text-gray-900">{o.orderCode}</p>
                       {o.storeName && <p className="text-xs text-blue-600 mt-0.5">🏪 {o.storeName}</p>}
                       {o.appOrderCode && <p className="text-xs text-gray-400">{o.appOrderCode}</p>}
-                      <span className={`badge text-xs mt-1 ${STATUS[o.status]?.cls || 'bg-gray-100 text-gray-500'}`}>
-                        {STATUS[o.status]?.l || o.status}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-1 mt-1">
+                        <span className={`badge text-xs ${STATUS[o.status]?.cls || 'bg-gray-100 text-gray-500'}`}>
+                          {STATUS[o.status]?.l || o.status}
+                        </span>
+                        {o.hasGiftItems && (
+                          <span className="badge text-xs bg-amber-100 text-amber-700" title="Đơn có sản phẩm giảm 100% — cần phát hành thêm HĐ tặng">
+                            🎁 Có HĐ tặng
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     <td className="px-4 py-3 min-w-[130px]">
@@ -207,7 +232,7 @@ export default function PosOrdersTab({ pageState, showToast }) {
 
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1.5 min-w-[120px]">
-                        {/* Đã phát hành → chỉ còn xem hóa đơn, không cho xem trước / phát hành lại */}
+                        {/* ─── HÓA ĐƠN CHÍNH ─── */}
                         {isIssued(o) ? (
                           <>
                             <button
@@ -241,6 +266,46 @@ export default function PosOrdersTab({ pageState, showToast }) {
                             )}
                           </>
                         )}
+
+                        {/* ─── HÓA ĐƠN TẶNG — chỉ hiện khi đơn có item giảm 100% ─── */}
+                        {o.hasGiftItems && (
+                          <div className="mt-1 pt-1.5 border-t border-dashed border-amber-200">
+                            {isGiftIssued(o) ? (
+                              <>
+                                <button
+                                  onClick={async () => {
+                                    try {
+                                      const url = await getInvoicePdf(o.giftEInvoiceNo)
+                                      window.open(url, '_blank')
+                                    } catch { showToast('❌ Không lấy được PDF HĐ tặng', false) }
+                                  }}
+                                  className="w-full px-2.5 py-1.5 text-xs font-medium rounded-md bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors flex items-center gap-1 text-left">
+                                  🎁 Xem HĐ tặng
+                                  {o.giftEInvoiceNo && <span className="text-amber-500 font-mono">{o.giftEInvoiceNo}</span>}
+                                </button>
+                                <button onClick={() => setModal({ ...o, _cqtMode: true, _giftMode: true })}
+                                  className="w-full mt-1 px-2.5 py-1.5 text-xs font-medium rounded-md bg-violet-50 text-violet-700 hover:bg-violet-100 transition-colors text-left">
+                                  📨 Gửi CQT HĐ tặng
+                                </button>
+                              </>
+                            ) : isIssued(o) ? (
+                              <>
+                                <button onClick={() => setModal({ ...o, _giftMode: true })}
+                                  className="w-full px-2.5 py-1.5 text-xs font-medium rounded-md bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors text-left">
+                                  👁 Xem trước HĐ tặng
+                                </button>
+                                <button onClick={() => setModal({ ...o, _giftMode: true })}
+                                  className="w-full mt-1 px-2.5 py-1.5 text-xs font-medium rounded-md bg-amber-100 text-amber-800 hover:bg-amber-200 transition-colors text-left">
+                                  🎁 Phát hành HĐ tặng
+                                </button>
+                              </>
+                            ) : (
+                              <div className="text-[10px] text-amber-600 bg-amber-50 rounded px-2 py-1 leading-tight">
+                                🎁 Có hàng tặng — phát hành HĐ chính trước
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -251,12 +316,25 @@ export default function PosOrdersTab({ pageState, showToast }) {
         )}
       </div>
 
-      <Pagination page={page} totalPages={meta.pages} onChange={p => patch({ posPage: p })} />
+      <div className="shrink-0 mt-3">
+        <Pagination page={page} totalPages={meta.pages} onChange={p => patch({ posPage: p })} />
+      </div>
 
       {modal && (
         <InvoiceModal
-          source="pos"
-          order={modal}
+          source={modal._giftMode ? 'pos-gift' : 'pos'}
+          order={
+            modal._giftMode && modal._cqtMode
+              ? {
+                  ...modal,
+                  // Khi gửi CQT cho HĐ tặng, modal cần đọc gift fields qua các key chuẩn
+                  eInvoiceNo:             modal.giftEInvoiceNo,
+                  eInvoiceTransactionId:  modal.giftEInvoiceTransactionId,
+                  invoiceSeries:          modal.giftEInvoiceSeries,
+                  templateCode:           modal.giftEInvoiceTemplateCode,
+                }
+              : modal
+          }
           onClose={() => setModal(null)}
           onIssued={invoiceNo => {
             setModal(null)
@@ -265,6 +343,6 @@ export default function PosOrdersTab({ pageState, showToast }) {
           }}
         />
       )}
-    </>
+    </div>
   )
 }

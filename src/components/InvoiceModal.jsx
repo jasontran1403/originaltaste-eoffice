@@ -1,19 +1,26 @@
 import { useState, useEffect, useRef } from 'react'
 import {
   previewInvoice, issueRetailInvoice, issueBusinessInvoice, sendInvoiceToCqt, getInvoicePdf,
-  previewSaleInvoice, issueSaleInvoice, sendSaleInvoiceToCqt
+  previewSaleInvoice, issueSaleInvoice, sendSaleInvoiceToCqt,
+  previewGiftInvoice, issueGiftInvoice, sendGiftInvoiceToCqt,
 } from '../services/api'
 
 /**
  * Bộ endpoint theo nguồn đơn.
- *   pos  — đơn POS  : tách riêng retail / business
- *   sale — đơn sỉ/lẻ: 1 endpoint duy nhất, BE tự nhận diện có MST hay không
+ *   pos      — đơn POS, hóa đơn chính: tách riêng retail / business
+ *   pos-gift — đơn POS, hóa đơn TẶNG : BE tự xử lý buyer từ order (có thể gửi body nếu muốn)
+ *   sale     — đơn sỉ/lẻ: 1 endpoint duy nhất, BE tự nhận diện có MST hay không
  */
 const ENDPOINTS = {
   pos: {
     preview:  (code, buyer) => previewInvoice(code, buyer),
     issue:    (code, buyer) => buyer ? issueBusinessInvoice(code, buyer) : issueRetailInvoice(code),
     sendCqt:  code => sendInvoiceToCqt(code),
+  },
+  'pos-gift': {
+    preview:  (code, buyer) => previewGiftInvoice(code, buyer),
+    issue:    (code, buyer) => issueGiftInvoice(code, buyer),
+    sendCqt:  code => sendGiftInvoiceToCqt(code),
   },
   sale: {
     preview:  (code, buyer) => previewSaleInvoice(code, buyer),
@@ -147,11 +154,14 @@ export default function InvoiceModal({ order, onClose, onIssued, source = 'pos' 
         <div className="shrink-0 flex items-center justify-between px-5 py-3.5
           bg-gradient-to-r from-blue-600 to-blue-700">
           <div>
-            <h2 className="font-bold text-white text-sm sm:text-base">Phát hành hóa đơn điện tử</h2>
+            <h2 className="font-bold text-white text-sm sm:text-base">
+              {source === 'pos-gift' ? 'Phát hành HĐ TẶNG (quà kèm)' : 'Phát hành hóa đơn điện tử'}
+            </h2>
             <p className="text-blue-200 text-xs mt-0.5">
               Đơn #{order.orderCode}
               {order.storeName ? ` · ${order.storeName}` : (order.type ? ` · ${order.type}` : '')}
-              {source === 'sale' ? ' · Bán sỉ/lẻ' : ''}
+              {source === 'sale'     ? ' · Bán sỉ/lẻ' : ''}
+              {source === 'pos-gift' ? ` · Hóa đơn chính: ${order.eInvoiceNo || '—'}` : ''}
             </p>
           </div>
           <button onClick={onClose}

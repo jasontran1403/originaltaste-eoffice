@@ -99,9 +99,9 @@ export default function SaleOrdersTab({ pageState, showToast }) {
   useEffect(() => () => clearTimeout(searchTimer.current), [])
 
   return (
-    <>
+    <div className="flex-1 min-h-0 flex flex-col">
       {/* ── Thanh filter ── */}
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-4 shrink-0">
         <div>
           <h2 className="text-lg font-bold text-gray-900">Đơn bán sỉ / lẻ</h2>
           <p className="text-sm text-gray-500 mt-0.5">
@@ -141,7 +141,7 @@ export default function SaleOrdersTab({ pageState, showToast }) {
       </div>
 
       {/* ── Chú thích màu ── */}
-      <div className="flex flex-wrap gap-4 mb-4 text-xs text-gray-500">
+      <div className="flex flex-wrap gap-4 mb-3 text-xs text-gray-500 shrink-0">
         {[
           { cls: 'bg-emerald-100 border-emerald-300', lbl: 'Đã xuất hóa đơn' },
           { cls: 'bg-orange-100 border-orange-300',   lbl: 'Có MST — xuất HĐ công ty' },
@@ -154,8 +154,8 @@ export default function SaleOrdersTab({ pageState, showToast }) {
         ))}
       </div>
 
-      {/* ── Bảng ── */}
-      <div className="card">
+      {/* ── Bảng — flex-1 fill, scroll bên trong ── */}
+      <div className="card flex-1 min-h-0 flex flex-col overflow-hidden">
         {loading ? (
           <div className="py-20 text-center text-gray-400">
             <div className="text-4xl mb-3 animate-pulse">⏳</div>
@@ -168,9 +168,9 @@ export default function SaleOrdersTab({ pageState, showToast }) {
             <p className="text-sm mt-1 text-gray-300">Thử đổi bộ lọc hoặc khoảng thời gian</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="flex-1 min-h-0 overflow-auto">
             <table className="w-full text-sm">
-              <thead>
+              <thead className="sticky top-0 z-10">
                 <tr className="bg-gray-50 border-b border-gray-200">
                   {['Mã đơn / Loại', 'Khách hàng', 'Thông tin HĐ', 'Tiền hàng', 'VAT',
                     'Thành tiền', 'Thời gian tạo', 'Hành động'].map(h => (
@@ -282,7 +282,9 @@ export default function SaleOrdersTab({ pageState, showToast }) {
         )}
       </div>
 
-      <Pagination page={page} totalPages={meta.pages} onChange={p => patch({ salePage: p })} />
+      <div className="shrink-0 mt-3">
+        <Pagination page={page} totalPages={meta.pages} onChange={p => patch({ salePage: p })} />
+      </div>
 
       {infoModal && (
         <InvoiceInfoModal
@@ -308,6 +310,6 @@ export default function SaleOrdersTab({ pageState, showToast }) {
           }}
         />
       )}
-    </>
+    </div>
   )
 }

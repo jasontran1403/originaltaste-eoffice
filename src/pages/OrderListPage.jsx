@@ -33,7 +33,10 @@ export default function OrderListPage() {
   }
 
   return (
-    <>
+    // Khung ngoài là flex column, chiều cao tràn phần layout dành cho content.
+    // h-[calc(100vh-6rem)] = viewport trừ chiều cao của AccountantLayout navbar.
+    // Điều chỉnh offset nếu layout bạn khác (vd navbar cao 4rem thì -4rem).
+    <div className="flex flex-col h-[calc(100vh-6rem)]">
       {toast && (
         <div className={`fixed top-16 right-4 z-50 px-5 py-3 rounded-xl shadow-xl text-sm font-medium text-white max-w-[90vw]
           ${toast.ok ? 'bg-emerald-600' : 'bg-red-600'}`}>
@@ -41,10 +44,10 @@ export default function OrderListPage() {
         </div>
       )}
 
-      <h1 className="text-xl font-bold text-gray-900 mb-4">Tạo hóa đơn</h1>
+      <h1 className="text-xl font-bold text-gray-900 mb-4 shrink-0">Tạo hóa đơn</h1>
 
-      {/* Tab panel — cuộn ngang được trên màn hình hẹp */}
-      <div className="flex items-center gap-1 mb-6 border-b border-gray-200 overflow-x-auto">
+      {/* Tab panel — shrink-0 để không bị co */}
+      <div className="flex items-center gap-1 mb-4 border-b border-gray-200 overflow-x-auto shrink-0">
         {TABS.map(({ key, icon, label }) => (
           <button
             key={key}
@@ -59,10 +62,12 @@ export default function OrderListPage() {
         ))}
       </div>
 
-      {/* Không dùng display:none — unmount hẳn tab kia để tránh gọi API thừa */}
-      {activeTab === 'pos'
-        ? <PosOrdersTab  pageState={pageState} showToast={showToast} />
-        : <SaleOrdersTab pageState={pageState} showToast={showToast} />}
-    </>
+      {/* Phần tab content fill phần còn lại; mỗi tab tự lo scroll bên trong */}
+      <div className="flex-1 min-h-0 flex flex-col">
+        {activeTab === 'pos'
+          ? <PosOrdersTab  pageState={pageState} showToast={showToast} />
+          : <SaleOrdersTab pageState={pageState} showToast={showToast} />}
+      </div>
+    </div>
   )
 }

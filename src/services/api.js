@@ -22,6 +22,45 @@ function handleSessionExpired(message) {
   setTimeout(() => { wipeAuth(); window.location.href = '/login' }, SESSION_EXPIRED_DELAY)
 }
 
+/**
+ * BE trả responseType=blob. Khi ký thành công blob là PDF; khi lỗi, BE
+ * có thể trả JSON (vẫn dạng blob) với body { code, message, ... }.
+ * Hàm này đọc blob, nếu không phải PDF thì bóc message và ném exception.
+ */
+async function assertPdfBlob(blob) {
+  if (!blob || blob.size === 0) {
+    throw new Error('Server trả về file rỗng')
+  }
+
+  // Content-type trả về từ BE: application/pdf khi OK, application/json khi lỗi
+  const type = (blob.type || '').toLowerCase()
+  if (type.includes('pdf')) return
+
+  // Thử đọc như JSON (BE trả 200 + JSON lỗi dạng {code, message})
+  if (type.includes('json') || type.includes('text')) {
+    try {
+      const text = await blob.text()
+      try {
+        const obj = JSON.parse(text)
+        throw new Error(obj.message || obj.error || text || 'Ký số thất bại')
+      } catch (parseErr) {
+        if (parseErr instanceof Error && parseErr.message) throw parseErr
+        throw new Error(text || 'Ký số thất bại')
+      }
+    } catch (e) {
+      if (e instanceof Error) throw e
+      throw new Error('Ký số thất bại')
+    }
+  }
+
+  // Fallback: không rõ MIME nhưng cũng không phải PDF → thử peek 4 byte đầu
+  const buf = await blob.slice(0, 5).arrayBuffer()
+  const header = String.fromCharCode(...new Uint8Array(buf))
+  if (header.startsWith('%PDF-')) return
+
+  throw new Error(`Phản hồi không phải PDF (type=${type || 'unknown'})`)
+}
+
 export const signPdf = async ({ file, zones, pin }) => {
   const form = new FormData()
   form.append('file', file)
@@ -114,6 +153,11 @@ export const issueRetailInvoice = orderCode => api.post(`/api/pos/einvoice/retai
 export const issueBusinessInvoice = (orderCode, buyerInfo) => api.post(`/api/pos/einvoice/business/${orderCode}`, buyerInfo)
 export const previewInvoice = (orderCode, buyerInfo = null) => api.post(`/api/pos/einvoice/preview/${orderCode}`, buyerInfo ?? {})
 export const sendInvoiceToCqt = orderCode => api.post(`/api/pos/einvoice/${orderCode}/send-cqt`, {})
+
+// ─── Hóa đơn tặng (gift invoice) cho đơn POS ───
+export const previewGiftInvoice = (orderCode, buyerInfo = null) => api.post(`/api/pos/einvoice/gift/preview/${orderCode}`, buyerInfo ?? {})
+export const issueGiftInvoice   = (orderCode, buyerInfo = null) => api.post(`/api/pos/einvoice/gift/issue/${orderCode}`,   buyerInfo ?? {})
+export const sendGiftInvoiceToCqt = orderCode => api.post(`/api/pos/einvoice/gift/${orderCode}/send-cqt`, {})
 export const getInvoicePdf = async (invoiceNo) => {
   const response = await api.get(`/api/pos/einvoice/${invoiceNo}/pdf`, { responseType: 'blob' })
   const blob = new Blob([response.data], { type: 'application/pdf' })

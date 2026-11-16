@@ -12,7 +12,7 @@ const PAGE_SIZE = 50
 //   9 = OT-447HVB (mặc định)
 //   7 = ???
 // Bỏ lựa chọn "Tất cả cửa hàng". Khi muốn mở thêm store, chỉ cần append id vào mảng.
-const POS_ALLOWED_STORE_IDS = [9, 7]
+const POS_ALLOWED_STORE_IDS = [9]
 const POS_DEFAULT_STORE_ID  = '9'
 
 const STATUS = {

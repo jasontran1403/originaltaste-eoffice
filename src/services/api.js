@@ -169,3 +169,10 @@ export const mediaUrl = path => {
   if (!path) return ''
   return /^https?:\/\//.test(path) ? path : BASE + path
 }
+
+export const getExternalCredential = (platform = 'GRAB_FOOD') =>
+  api.get(`/api/pos/external-orders/credential/${platform}/status`)
+
+// Cập nhật cookie cho 1 sàn.
+export const setExternalCredential = (platform = 'GRAB_FOOD', cookie) =>
+  api.put(`/api/pos/external-orders/credential/${platform}`, { cookie })

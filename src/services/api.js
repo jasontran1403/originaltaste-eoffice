@@ -134,6 +134,17 @@ export const getInvoiceOrders = (date, page = 0, size = 50, fromDate, toDate, st
 
 export const getStores = () => api.get('/api/pos/einvoice/stores')
 
+// ─── Cửa hàng hóa đơn (einvoice_store) ───────────────────────────
+// Mapping 1 ký hiệu Viettel ↔ 1 địa điểm kinh doanh.
+export const getEInvoiceBusinessLocations = (activeOnly = true) =>
+  api.get(`/api/pos/einvoice/business-locations?activeOnly=${activeOnly}`)
+export const createEInvoiceBusinessLocation = data =>
+  api.post('/api/pos/einvoice/business-locations', data)
+export const updateEInvoiceBusinessLocation = (id, data) =>
+  api.put(`/api/pos/einvoice/business-locations/${id}`, data)
+export const deleteEInvoiceBusinessLocation = id =>
+  api.delete(`/api/pos/einvoice/business-locations/${id}`)
+
 export const getSaleInvoiceOrders = (page = 0, size = 50, fromDate, toDate, type, q) => {
   const params = { page, size, ...dateParams(fromDate, toDate) }
   if (type) params.type = type
@@ -149,7 +160,9 @@ export const previewSaleInvoice = (orderCode, buyerInfo = null) => api.post(`/ap
 export const issueSaleInvoice = (orderCode, buyerInfo = null) => api.post(`/api/pos/einvoice/sale/issue/${orderCode}`, buyerInfo ?? {})
 export const sendSaleInvoiceToCqt = orderCode => api.post(`/api/pos/einvoice/sale/${orderCode}/send-cqt`, {})
 export const createDraftInvoice = (orderCode, buyerInfo) => api.post(`/api/pos/einvoice/draft/${orderCode}`, buyerInfo ?? {})
-export const issueRetailInvoice = orderCode => api.post(`/api/pos/einvoice/retail/${orderCode}`, {})
+// Retail giờ nhận optional body { storeCode, storeName } — BE bỏ qua các field khác.
+export const issueRetailInvoice = (orderCode, storeCtx = null) =>
+  api.post(`/api/pos/einvoice/retail/${orderCode}`, storeCtx ?? {})
 export const issueBusinessInvoice = (orderCode, buyerInfo) => api.post(`/api/pos/einvoice/business/${orderCode}`, buyerInfo)
 export const previewInvoice = (orderCode, buyerInfo = null) => api.post(`/api/pos/einvoice/preview/${orderCode}`, buyerInfo ?? {})
 export const sendInvoiceToCqt = orderCode => api.post(`/api/pos/einvoice/${orderCode}/send-cqt`, {})

@@ -3,6 +3,7 @@ import DateRangePicker from '../../components/DateRangePicker'
 import InvoiceDetailBadge from '../../components/InvoiceDetailBadge'
 import Pagination from '../../components/Pagination'
 import InvoiceModal from '../../components/InvoiceModal'
+import PosStoreInvoiceModal from '../../components/PosStoreInvoiceModal'
 import { getInvoiceOrders, getStores, getInvoicePdf } from '../../services/api'
 import { fmtCurrency, fmtDateTime, todayVN } from '../../utils/format'
 
@@ -57,6 +58,7 @@ export default function PosOrdersTab({ pageState, showToast }) {
   const [stores, setStores] = useState([])
   const [loading, setLoading] = useState(false)
   const [modal, setModal] = useState(null)
+  const [storeModal, setStoreModal] = useState(null)   // ← modal phát hành có mã cửa hàng
   const [refreshKey, setRefreshKey] = useState(0)
 
   // Đảm bảo URL luôn có posStore (nếu user vào không kèm query thì set mặc định)
@@ -264,6 +266,13 @@ export default function PosOrdersTab({ pageState, showToast }) {
                                 🧾 Phát hành HĐ
                               </button>
                             )}
+                            {o.status === 'COMPLETED' && (
+                              <button onClick={() => setStoreModal(o)}
+                                className="px-2.5 py-1.5 text-xs font-medium rounded-md bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors text-left"
+                                title="Phát hành HĐ, chọn cửa hàng tương ứng (Nghị định 68)">
+                                🏪 Chọn cửa hàng
+                              </button>
+                            )}
                           </>
                         )}
 
@@ -319,6 +328,17 @@ export default function PosOrdersTab({ pageState, showToast }) {
       <div className="shrink-0 mt-3">
         <Pagination page={page} totalPages={meta.pages} onChange={p => patch({ posPage: p })} />
       </div>
+
+      {storeModal && (
+        <PosStoreInvoiceModal
+          order={storeModal}
+          onClose={() => setStoreModal(null)}
+          onIssued={invoiceNo => {
+            showToast(`✅ Phát hành OK (có mã CH) — ${invoiceNo}`)
+            setRefreshKey(k => k + 1)
+          }}
+        />
+      )}
 
       {modal && (
         <InvoiceModal
